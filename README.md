@@ -4,8 +4,9 @@
 | :---- | :---- | :---- |
 | 03/11/2025 |  | Homepage Product Page Access Cart Shipment page Payment page Searchbar |
 | 10/11/2025 |  | Fix Search Bar Fix Cart  |
-| 17/11/2025 | AI chatbot | Order management Improve graphics Gift Card (payment) working |
-| 24/11/2025 |  | Automatic email to the customer when the order is complete  |
+| 17/11/2025 |  | Order management Improve graphics Gift Card (payment) working |
+| 24/11/2025 |  | Automatic email to the customer when the order is complete  AI Chatbot  |
+| 01/12/2025 | Product Categories Fix AI chatbot |  |
 
 Dart	programming language  
 Flutter	framework  
