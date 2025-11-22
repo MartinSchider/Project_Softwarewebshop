@@ -1,4 +1,14 @@
 [CLICK HERE FOR THE WEBPAGE](https://softwarewebshop-7ff5a.web.app)
+Updates from 03/11/2025:
+•	Fixed the search bar.
+•	Fixed the cart: the button now shows the number of items inside, and the cart page displays the total amount to pay.
+•	Improved the website’s graphics.
+•	Implemented gift cards.
+•	Added the option to complete an order using gift cards.
+•	Created a database containing all customer orders.
+•	Wrote the code for the automatic confirmation email (currently not working due to external factors).
+•	Implemented a first version of the AI chatbot.
+
 
 | Date | TO DO | DONE |
 | :---- | :---- | :---- |
