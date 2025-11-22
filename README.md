@@ -6,8 +6,8 @@
 | 10/11/2025 |  | Fix Search Bar Fix Cart  |
 | 17/11/2025 |  | Order management Improve graphics Gift Card (payment) working |
 | 24/11/2025 |  | Automatic email to the customer when the order is complete  AI Chatbot  |
-| 01/12/2025 | Product Categories Fix AI chatbot |  |
-| 15/12/2025 | Customers account, Previous Orders, Favorites list | |
+| 01/12/2025 | Product Categories Fix AI chatbot, Fix email to the customer |  |
+| 15/12/2025 | Customers account, Previous Orders, Favorites list, Filters(price, categories...) | |
 
 Dart	programming language  
 Flutter	framework  
