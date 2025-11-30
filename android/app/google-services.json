@@ -1,0 +1,46 @@
+{
+  "project_info": {
+    "project_number": "758309582569",
+    "project_id": "softwarewebshop-7ff5a",
+    "storage_bucket": "softwarewebshop-7ff5a.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:758309582569:android:d1a38c58cd7c7342d26278",
+        "android_client_info": {
+          "package_name": "com.example.webshop"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "758309582569-fespbcgrlofnq3lro2b21ti66jskp9eb.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCngHMzhIGnbPQESq533VddiUaJr9WIhp4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "758309582569-fespbcgrlofnq3lro2b21ti66jskp9eb.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "758309582569-aam544hq70k4omknf8tjcv38k88doco9.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.webshop"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
