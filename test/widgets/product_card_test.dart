@@ -33,6 +33,7 @@ void main() {
         price: 49.99,
         imageUrl: 'https://via.placeholder.com/150',
         stock: 15,
+        category: 'General',
       );
     });
 
@@ -89,6 +90,7 @@ void main() {
         price: 29.99,
         imageUrl: 'https://via.placeholder.com/150',
         stock: 0,
+        category: 'General',
       );
 
       await tester.pumpWidget(
@@ -109,8 +111,7 @@ void main() {
     // Expected behavior: ProductCard should be wrapped in InkWell or GestureDetector
     // Actual error: Cannot find Card widget because ProductCard fails to build
     // Root cause: Firebase not initialized for CartService dependency
-    testWidgets('ProductCard should be tappable',
-        (WidgetTester tester) async {
+    testWidgets('ProductCard should be tappable', (WidgetTester tester) async {
       await tester.pumpWidget(
         ProviderScope(
           child: MaterialApp(
