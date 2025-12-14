@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:webshop/models/product.dart';
 import 'package:webshop/providers/cart_providers.dart';
+import 'package:webshop/providers/wishlist_provider.dart';
 import 'package:webshop/utils/constants.dart';
 import 'package:webshop/auth_page.dart';
 import 'package:webshop/services/cart_service.dart';
@@ -11,17 +12,17 @@ import 'package:webshop/product_detail_page.dart';
 import 'package:webshop/utils/ui_helper.dart';
 import 'package:webshop/widgets/custom_image.dart';
 
-/// A card widget displaying a summary of a product.
+/// A widget representing a single product item within a grid or list.
 ///
-/// This component is used in the main product grid list. It provides:
-/// 1. A cached image preview.
-/// 2. Essential product details (name, price).
-/// 3. Quick actions: View details (tap) and Add to Cart (button).
+/// This widget encapsulates the UI presentation of a [Product] and handles
+/// immediate user interactions such as:
+/// * Navigating to the detail page.
+/// * Toggling the wishlist status.
+/// * Adding the item to the cart (if in stock).
 class ProductCard extends ConsumerWidget {
   /// The product data to display.
   final Product product;
 
-  /// Creates a [ProductCard].
   const ProductCard({
     super.key,
     required this.product,
@@ -29,18 +30,75 @@ class ProductCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // Access the cart service to handle "Add to Cart" actions.
     final cartService = ref.read(cartServiceProvider);
+    
+    // --- Wishlist State ---
+    final wishlistIdsAsync = ref.watch(wishlistIdsProvider);
+    final wishlistController = ref.read(wishlistControllerProvider);
+    
+    // Check if the current product ID exists in the list of user favorites
+    // to determine the state of the heart icon.
+    final bool isFavorite = wishlistIdsAsync.maybeWhen(
+      data: (ids) => ids.contains(product.id),
+      orElse: () => false,
+    );
+
+    // --- Stock Logic ---
+    // Pre-calculate these booleans to drive UI variations (badges, button disabling)
+    // without cluttering the widget tree with logic.
+    final bool isOutOfStock = product.stock <= 0;
+    final bool isLowStock = product.stock > 0 && product.stock < 5;
+
+    // --- Actions ---
+
+    /// Toggles the product in the user's wishlist.
+    ///
+    /// Requires authentication because the wishlist is persisted in the
+    /// user's specific Firestore document.
+    Future<void> _toggleWishlist() async {
+      if (FirebaseAuth.instance.currentUser == null) {
+        // Redirect anonymous users to the auth page to secure the data.
+        Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AuthPage()));
+        return;
+      }
+      try {
+        if (isFavorite) {
+          await wishlistController.remove(product.id);
+        } else {
+          await wishlistController.add(product.id);
+          UiHelper.showSuccess(context, "Added to wishlist");
+        }
+      } catch (e) {
+        if (context.mounted) UiHelper.showError(context, e);
+      }
+    }
+
+    /// Adds the product to the cart.
+    ///
+    /// Also enforces authentication because carts are tied to specific User UIDs
+    /// in the database structure.
+    void _attemptAddToCart() async {
+      if (FirebaseAuth.instance.currentUser == null) {
+        await Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AuthPage()));
+        // If user cancelled login, abort operation.
+        if (FirebaseAuth.instance.currentUser == null) return;
+      }
+      
+      try {
+        await cartService.addProductToCart(product, 1);
+        if (context.mounted) UiHelper.showSuccess(context, 'Added to cart');
+      } catch (e) {
+        if (context.mounted) UiHelper.showError(context, e);
+      }
+    }
 
     return Card(
-      elevation: cardElevation,
-      shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(borderRadius)),
-      margin: const EdgeInsets.all(smallPadding),
-      // Anti-alias clip is required to ensure the InkWell ripple effect respects the rounded corners.
+      elevation: 2, 
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(borderRadius)),
+      margin: const EdgeInsets.all(4), 
       clipBehavior: Clip.antiAlias,
+      color: Colors.white, // Clean white background for better image contrast
       child: InkWell(
-        // NAVIGATION: Tapping the card opens the full detail page.
         onTap: () {
           Navigator.of(context).push(
             MaterialPageRoute(
@@ -48,108 +106,168 @@ class ProductCard extends ConsumerWidget {
             ),
           );
         },
-        child: Padding(
-          padding: const EdgeInsets.all(smallPadding),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // --- Image Section ---
-              // Expanded ensures the image takes up all available vertical space
-              // in the card, pushing text to the bottom.
-              Expanded(
-                child: Center(
-                  child: CustomImage(
-                    imageUrl: product.imageUrl,
-                    fit: BoxFit
-                        .contain, // Ensures the whole product is visible without cropping
-                  ),
-                ),
-              ),
-              const SizedBox(height: smallPadding),
-
-              // --- Text Section ---
-              Text(
-                product.name,
-                style:
-                    const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-              Text(
-                product.description,
-                style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-              const SizedBox(height: 4),
-
-              // --- Action Section ---
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // --- 1. IMAGE AREA ---
+            Expanded(
+              child: Stack(
                 children: [
-                  Text(
-                    '€${product.price.toStringAsFixed(2)}',
-                    style: const TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.teal),
+                  // Product Image
+                  Padding(
+                    padding: const EdgeInsets.all(12.0), 
+                    child: SizedBox(
+                      width: double.infinity,
+                      height: double.infinity,
+                      child: CustomImage(
+                        imageUrl: product.imageUrl,
+                        // Use 'contain' to ensure the entire product is visible.
+                        // 'cover' might crop essential details (e.g., shoe shape, bottle branding).
+                        fit: BoxFit.contain, 
+                      ),
+                    ),
                   ),
 
-                  // Quick Add Button
-                  IconButton(
-                    icon: const Icon(Icons.add_shopping_cart),
-                    color: Theme.of(context).colorScheme.primary,
-                    onPressed: () async {
-                      // AUTH CHECK: Ensure user is logged in before adding to cart.
-                      if (FirebaseAuth.instance.currentUser == null) {
-                        // If not logged in, redirect to AuthPage.
-                        // We await the result to see if they logged in successfully.
-                        await Navigator.of(context).push(
-                          MaterialPageRoute(
-                              builder: (context) => const AuthPage()),
-                        );
+                  // Wishlist Button (Floating Top-Right)
+                  Positioned(
+                    top: 4,
+                    right: 4,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.95),
+                        shape: BoxShape.circle,
+                        boxShadow: const [
+                          BoxShadow(color: Colors.black12, blurRadius: 4, spreadRadius: 1)
+                        ],
+                      ),
+                      child: IconButton(
+                        icon: Icon(
+                          isFavorite ? Icons.favorite : Icons.favorite_border,
+                          size: 18, 
+                        ),
+                        color: isFavorite ? Colors.red : Colors.grey,
+                        constraints: const BoxConstraints.tightFor(width: 32, height: 32),
+                        padding: EdgeInsets.zero,
+                        onPressed: _toggleWishlist,
+                      ),
+                    ),
+                  ),
 
-                        // Safety check: Context might be invalid if user navigated away.
-                        if (!context.mounted) return;
+                  // Stock Badge (Floating Top-Left)
+                  // Provides immediate visual feedback on availability urgency.
+                  if (isOutOfStock)
+                    Positioned(
+                      top: 8,
+                      left: 8,
+                      child: _buildBadge('SOLD OUT', errorColor),
+                    )
+                  else if (isLowStock)
+                    Positioned(
+                      top: 8,
+                      left: 8,
+                      child: _buildBadge('LOW STOCK', Colors.orange),
+                    ),
+                ],
+              ),
+            ),
 
-                        // Check again if login was successful
-                        if (FirebaseAuth.instance.currentUser != null) {
-                          _attemptAddToCart(context, cartService, product);
-                        } else {
-                          // Feedback if user cancelled login
-                          UiHelper.showError(
-                              context, 'Please sign in to add items to cart.');
-                        }
-                      } else {
-                        // User is already logged in, proceed directly.
-                        _attemptAddToCart(context, cartService, product);
-                      }
-                    },
+            // --- 2. INFO AREA ---
+            Padding(
+              padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Category Label
+                  Text(
+                    product.category.toUpperCase(),
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.grey[600],
+                      letterSpacing: 0.5,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  
+                  const SizedBox(height: 2),
+
+                  // Product Name
+                  Text(
+                    product.name,
+                    style: const TextStyle(
+                      fontSize: 14, 
+                      fontWeight: FontWeight.w600,
+                      height: 1.2,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+
+                  const SizedBox(height: 8),
+
+                  // Price & Add Button Row
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      // Price
+                      Text(
+                        '€${product.price.toStringAsFixed(2)}',
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.bold,
+                          color: Theme.of(context).primaryColor,
+                        ),
+                      ),
+
+                      // Add to Cart Button (Compact Circle)
+                      SizedBox(
+                        width: 32,
+                        height: 32,
+                        child: Material(
+                          // Grey out button if out of stock to indicate non-interactivity
+                          color: isOutOfStock ? Colors.grey[300] : Theme.of(context).primaryColor,
+                          shape: const CircleBorder(),
+                          elevation: 2,
+                          child: InkWell(
+                            customBorder: const CircleBorder(),
+                            onTap: isOutOfStock ? null : _attemptAddToCart,
+                            child: Icon(
+                              Icons.add_shopping_cart,
+                              size: 18,
+                              color: isOutOfStock ? Colors.grey : Colors.white,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
   }
 
-  /// Helper method to execute the add-to-cart logic with UI feedback.
-  void _attemptAddToCart(
-      BuildContext context, CartService cartService, Product product) async {
-    try {
-      await cartService.addProductToCart(product, 1);
-
-      // Provide positive feedback
-      if (context.mounted) {
-        UiHelper.showSuccess(context, '${product.name} added to cart!');
-      }
-    } catch (e) {
-      // Provide error feedback (e.g., network error or out of stock)
-      if (context.mounted) {
-        UiHelper.showError(context, e);
-      }
-    }
+  /// Helper method to create consistent status badges (Sold Out / Low Stock).
+  Widget _buildBadge(String text, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.9),
+        borderRadius: BorderRadius.circular(4),
+        boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 2)],
+      ),
+      child: Text(
+        text,
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 9,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+    );
   }
 }

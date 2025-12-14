@@ -1,38 +1,29 @@
 // lib/models/app_user.dart
 import 'package:flutter/foundation.dart';
 
-/// Represents the user profile data within the application.
+/// Represents a registered user in the application.
 ///
-/// This class is marked as [immutable] to ensure thread safety and consistent state
-/// management (e.g., when used with Riverpod). To modify a user's data,
-/// use the [copyWith] method to create a new instance.
+/// This model mirrors the document structure in the 'users' Firestore collection.
+/// It is marked as [immutable] to ensure thread safety and predictable state updates.
 @immutable
 class AppUser {
-  /// The unique identifier for the user (usually matches the Firebase Auth UID).
+  /// The unique Firebase Authentication UID.
   final String id;
 
-  /// The user's email address. Nullable if the user registered via other methods.
+  /// The user's email address.
   final String? email;
 
-  /// The user's first name.
   final String? name;
-
-  /// The user's last name.
   final String? surname;
-
-  /// The physical shipping address.
   final String? address;
-
-  /// The postal or zip code.
   final String? postcode;
-
-  /// The city of residence.
   final String? city;
 
-  /// Creates a constant instance of [AppUser].
+  /// Indicates if the user has administrative privileges.
   ///
-  /// Only [id] is required to identify the user; other profile details
-  /// can be populated later during the checkout or profile editing process.
+  /// This field controls access to the Admin Dashboard and management features.
+  final bool isAdmin; // <--- New field for Admin access
+
   const AppUser({
     required this.id,
     this.email,
@@ -41,49 +32,38 @@ class AppUser {
     this.address,
     this.postcode,
     this.city,
+    this.isAdmin = false, // Default to false for security reasons
   });
 
-  /// Factory constructor to create an [AppUser] instance from a key-value map.
-  ///
-  /// This is typically used when parsing data retrieved from Firestore.
-  ///
-  /// * [data]: The map containing the user data (e.g., `document.data()`).
-  /// * [id]: The unique document ID, passed separately as it is not usually stored inside the data map.
+  /// Factory constructor to create an [AppUser] from Firestore data.
   factory AppUser.fromMap(Map<String, dynamic> data, String id) {
     return AppUser(
       id: id,
-      // We use explicit casting (as String?) to prevent runtime errors
-      // if the database field is missing (null) or of an unexpected type.
       email: data['email'] as String?,
       name: data['name'] as String?,
       surname: data['surname'] as String?,
       address: data['address'] as String?,
       postcode: data['postcode'] as String?,
       city: data['city'] as String?,
+      // Read the admin flag from the database, defaulting to false if missing.
+      isAdmin: data['isAdmin'] as bool? ?? false, 
     );
   }
 
-  /// Converts the [AppUser] instance into a [Map] for database persistence.
-  ///
-  /// This method prepares the data to be written to Firestore.
+  /// Converts the user instance to a Map for database operations.
   Map<String, dynamic> toMap() {
     return {
-      // We intentionally exclude 'id' from the map because in Firestore,
-      // the ID is the key of the document itself, not a field within it.
       'email': email,
       'name': name,
       'surname': surname,
       'address': address,
       'postcode': postcode,
       'city': city,
+      'isAdmin': isAdmin, // Persist the admin status to the DB
     };
   }
 
-  /// Creates a copy of this [AppUser] but with the given fields replaced with the new values.
-  ///
-  /// Since the class is immutable, we cannot change fields directly.
-  /// This method allows us to "update" the user state by returning a new object
-  /// with the desired changes, preserving the values of unchanged fields.
+  /// Creates a copy of this user with the given fields replaced with new values.
   AppUser copyWith({
     String? id,
     String? email,
@@ -92,6 +72,7 @@ class AppUser {
     String? address,
     String? postcode,
     String? city,
+    bool? isAdmin,
   }) {
     return AppUser(
       id: id ?? this.id,
@@ -101,6 +82,7 @@ class AppUser {
       address: address ?? this.address,
       postcode: postcode ?? this.postcode,
       city: city ?? this.city,
+      isAdmin: isAdmin ?? this.isAdmin,
     );
   }
 }

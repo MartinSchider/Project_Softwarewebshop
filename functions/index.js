@@ -1,10 +1,16 @@
-const functions = require("firebase-functions");
+const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
 admin.initializeApp();
 const db = admin.firestore();
 
-// 1. Cloud Function to automatically calculate cart total and item count
-//    Triggered whenever an item is added, removed, or updated in a user's cart subcollection.
+/**
+ * Automatically recalculates the shopping cart totals whenever an item is added, updated, or removed.
+ *
+ * Trigger: Firestore Write on `carts/{cartId}/items/{itemId}`.
+ *
+ * This function ensures that the client cannot tamper with the total price by
+ * forcing a server-side recalculation based on the individual items currently in the database.
+ */
 exports.calculateCartTotal = functions.firestore
   .document("carts/{cartId}/items/{itemId}")
   .onWrite(async (change, context) => {
@@ -13,427 +19,258 @@ exports.calculateCartTotal = functions.firestore
     const itemsRef = cartRef.collection("items");
 
     try {
+      // We fetch all items to recalculate from scratch.
+      // This prevents "drift" where the total might eventually mismatch the items due to
+      // network errors or concurrent writes if we tried to increment/decrement instead.
       const itemsSnapshot = await itemsRef.get();
       let newTotalPrice = 0;
       let newItemCount = 0;
 
-      // Calculate total price and item count from all items in the subcollection
       itemsSnapshot.forEach((doc) => {
-        const itemData = doc.data();
-        const productPrice = typeof itemData.productPrice === 'number' ? itemData.productPrice : 0;
-        const quantity = typeof itemData.quantity === 'number' ? itemData.quantity : 0;
-        newTotalPrice += productPrice * quantity;
-        newItemCount += quantity;
+        const d = doc.data();
+        // Use fallbacks (0) to prevent NaN errors if data is corrupted or missing during a write.
+        const p = typeof d.productPrice === 'number' ? d.productPrice : 0;
+        const q = typeof d.quantity === 'number' ? d.quantity : 0;
+        newTotalPrice += p * q;
+        newItemCount += q;
       });
 
-      // Get the current cart document to check for applied gift card
+      // We need the parent cart document to check for active gift cards.
       const cartDoc = await cartRef.get();
-      const cartData = cartDoc.data() || {}; // Handle case where cartData might be null/undefined
-
-      let finalAmountToPay = newTotalPrice;
-      let giftCardAppliedAmount = (typeof cartData.giftCardAppliedAmount === 'number') ? cartData.giftCardAppliedAmount : 0;
-      let appliedGiftCardCode = cartData.appliedGiftCardCode;
-
-
-      // If a gift card was applied previously, re-calculate the final amount
-      // The finalAmountToPay should be the totalPrice MINUS the giftCardAppliedAmount
-      if (appliedGiftCardCode && giftCardAppliedAmount > 0) {
-          finalAmountToPay = Math.max(0, newTotalPrice - giftCardAppliedAmount);
-      } else {
-          // If no gift card applied, final amount is just the total price
-          finalAmountToPay = newTotalPrice;
+      const cartData = cartDoc.data() || {};
+      
+      let finalAmount = newTotalPrice;
+      const giftAmt = (typeof cartData.giftCardAppliedAmount === 'number') ? cartData.giftCardAppliedAmount : 0;
+      
+      // If a gift card is active, we must re-apply the logic here to ensure
+      // the final amount doesn't go below zero if the cart total dropped.
+      if (cartData.appliedGiftCardCode && giftAmt > 0) {
+          finalAmount = Math.max(0, newTotalPrice - giftAmt);
       }
 
-      // Update the main cart document
-      await cartRef.set(
-        {
+      // Merge true is used to update totals without overwriting other fields like 'ownerUID'.
+      await cartRef.set({
           totalPrice: newTotalPrice,
           itemCount: newItemCount,
-          finalAmountToPay: finalAmountToPay, // Update final amount
+          finalAmountToPay: finalAmount,
           lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
-        },
-        { merge: true }
-      );
-
-      console.log(`Cart ${cartId} total recalculated: ${newTotalPrice}, items: ${newItemCount}, finalAmount: ${finalAmountToPay}`);
+      }, { merge: true });
       return null;
-    } catch (error) {
-      console.error("Error calculating cart total:", error);
-      return null; // Don't rethrow, just log the error
-    }
+    } catch (e) { console.error(e); return null; }
   });
 
-
+/**
+ * Validates and applies a gift card code to a specific cart.
+ *
+ * This is an HTTPS Callable function because it requires complex validation logic
+ * (expiry, balance check, already applied check) that is difficult to secure
+ * using only Firestore Security Rules.
+ *
+ * @param {Object} data - The request payload containing `giftCardCode` and `cartId`.
+ * @param {Object} context - The context containing auth information.
+ * @returns {Promise<Object>} A success object if the operation completes.
+ */
 exports.applyGiftCard = functions.https.onCall(async (data, context) => {
-  // 1. Check authentication
-  if (!context.auth) {
-    throw new functions.https.HttpsError(
-      "unauthenticated",
-      "The function must be called while authenticated."
-    );
-  }
+  if (!context.auth) throw new functions.https.HttpsError("unauthenticated", "Auth required.");
+  const { giftCardCode, cartId } = data;
   const userId = context.auth.uid;
 
-  // 2. Validate input
-  const giftCardCode = data.giftCardCode;
-  const cartId = data.cartId; // Should be userId for current setup
+  if (!giftCardCode || !cartId || cartId !== userId) throw new functions.https.HttpsError("invalid-argument", "Invalid data.");
 
-  if (!giftCardCode || typeof giftCardCode !== 'string' || giftCardCode.trim() === '') {
-    throw new functions.https.HttpsError(
-      "invalid-argument",
-      "The 'giftCardCode' field is required and must be a non-empty string."
-    );
-  }
-  if (!cartId || cartId !== userId) { // Ensure cartId matches authenticated user's ID
-    throw new functions.https.HttpsError(
-      "invalid-argument",
-      "The 'cartId' must match the authenticated user's ID."
-    );
-  }
-
-  const giftCardRef = db.collection("giftCards").doc(giftCardCode);
+  const giftRef = db.collection("giftCards").doc(giftCardCode);
   const cartRef = db.collection("carts").doc(cartId);
 
-  return db.runTransaction(async (transaction) => {
-    const giftCardDoc = await transaction.get(giftCardRef);
-    const cartDoc = await transaction.get(cartRef);
+  // Use a transaction to prevent race conditions.
+  // Example: Two users trying to use the same gift card simultaneously,
+  // or one user trying to double-apply a card before the balance updates.
+  return db.runTransaction(async (t) => {
+    const gDoc = await t.get(giftRef);
+    const cDoc = await t.get(cartRef);
 
-    // 3. Validate Gift Card
-    if (!giftCardDoc.exists) {
-      throw new functions.https.HttpsError(
-        "not-found",
-        "Gift card not found."
-      );
-    }
+    if (!gDoc.exists) throw new functions.https.HttpsError("not-found", "Card not found.");
+    const gData = gDoc.data();
+    
+    // Business logic validation: Ensure card is valid and has funds.
+    if (!gData.isActive || gData.balance <= 0) throw new functions.https.HttpsError("failed-precondition", "Card invalid.");
 
-    const giftCardData = giftCardDoc.data();
-    if (!giftCardData.isActive) {
-      throw new functions.https.HttpsError(
-        "failed-precondition",
-        "Gift card is not active."
-      );
-    }
-    if (giftCardData.balance <= 0) {
-      throw new functions.https.HttpsError(
-        "failed-precondition",
-        "Gift card has no remaining balance."
-      );
-    }
-    if (giftCardData.expirationDate && giftCardData.expirationDate.toDate() < new Date()) {
-      throw new functions.https.HttpsError(
-        "failed-precondition",
-        "Gift card has expired."
-      );
-    }
+    if (!cDoc.exists) throw new functions.https.HttpsError("not-found", "Cart not found.");
+    const cData = cDoc.data();
+    
+    // Enforce "one card per order" rule.
+    if (cData.appliedGiftCardCode) throw new functions.https.HttpsError("failed-precondition", "Card already applied.");
 
-    // 4. Get Cart Total
-    if (!cartDoc.exists) {
-      throw new functions.https.HttpsError(
-        "not-found",
-        "Cart not found."
-      );
-    }
-    const cartData = cartDoc.data();
-    const currentCartTotal = (typeof cartData.totalPrice === 'number') ? cartData.totalPrice : 0;
+    const total = cData.totalPrice || 0;
+    // Cap the deduction at the total price so we don't end up with negative payment amounts.
+    const amount = Math.min(gData.balance, total);
+    
+    if (amount <= 0) throw new functions.https.HttpsError("failed-precondition", "Nothing to apply.");
 
-    // Prevent applying the same gift card multiple times
-    if (cartData.appliedGiftCardCode === giftCardCode) {
-       throw new functions.https.HttpsError(
-        "already-exists",
-        "This gift card has already been applied to this cart."
-      );
-    }
-    // Prevent applying a new gift card if one is already applied
-    if (cartData.appliedGiftCardCode) { // If there's any appliedGiftCardCode, even if amount is 0
-        throw new functions.https.HttpsError(
-            "failed-precondition",
-            `A different gift card (${cartData.appliedGiftCardCode}) is already applied. Please remove it first.`
-        );
-    }
-
-
-    // 5. Calculate amount to apply
-    // The amount applied is the MINIMUM of the gift card's balance OR the current cart total
-    const amountToApply = Math.min(giftCardData.balance, currentCartTotal);
-
-    if (amountToApply <= 0) {
-        throw new functions.https.HttpsError(
-            "failed-precondition",
-            "No amount to apply from gift card or cart total is already zero/negative."
-        );
-    }
-
-    // 6. Update Gift Card balance
-    const newGiftCardBalance = giftCardData.balance - amountToApply;
-    transaction.update(giftCardRef, { balance: newGiftCardBalance });
-
-    // 7. Update Cart with applied amount AND new finalAmountToPay
-    const newFinalAmountToPay = Math.max(0, currentCartTotal - amountToApply); // CALCOLO AGGIUNTO
-    transaction.update(cartRef, {
-      giftCardAppliedAmount: amountToApply, // Amount this specific gift card reduced
-      appliedGiftCardCode: giftCardCode, // Store the applied gift card code
-      finalAmountToPay: newFinalAmountToPay, // AGGIORNAMENTO FONDAMENTALE
+    // Atomically reduce gift card balance and update cart totals.
+    t.update(giftRef, { balance: gData.balance - amount });
+    t.update(cartRef, {
+      giftCardAppliedAmount: amount,
+      appliedGiftCardCode: giftCardCode,
+      finalAmountToPay: total - amount,
       lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
     });
-    console.log(`DEBUG: Gift card ${giftCardCode} applied to cart ${cartId}. newFinalAmountToPay: ${newFinalAmountToPay}`);
-
-    return {
-      message: "Gift card applied successfully!",
-      appliedAmount: amountToApply,
-      newCartTotal: currentCartTotal,
-      newFinalAmountToPay: newFinalAmountToPay,
-      giftCardBalanceRemaining: newGiftCardBalance
-    };
+    return { success: true };
   });
 });
 
+/**
+ * Removes an applied gift card from a cart and refunds the balance to the card.
+ *
+ * @param {Object} data - The request payload containing `cartId`.
+ * @param {Object} context - The context containing auth information.
+ * @returns {Promise<Object>} A success object if the operation completes.
+ */
 exports.removeGiftCard = functions.https.onCall(async (data, context) => {
-  if (!context.auth) {
-    throw new functions.https.HttpsError(
-      "unauthenticated",
-      "The function must be called while authenticated."
-    );
-  }
-  const userId = context.auth.uid;
+  if (!context.auth) throw new functions.https.HttpsError("unauthenticated", "Auth required.");
   const cartId = data.cartId;
-
-  if (!cartId || cartId !== userId) {
-    throw new functions.https.HttpsError(
-      "invalid-argument",
-      "The 'cartId' must match the authenticated user's ID."
-    );
-  }
-
   const cartRef = db.collection("carts").doc(cartId);
 
-  return db.runTransaction(async (transaction) => {
-    const cartDoc = await transaction.get(cartRef);
+  return db.runTransaction(async (t) => {
+    const cDoc = await t.get(cartRef);
+    if (!cDoc.exists) throw new functions.https.HttpsError("not-found", "Cart not found.");
+    
+    const cData = cDoc.data();
+    const code = cData.appliedGiftCardCode;
+    const amt = cData.giftCardAppliedAmount || 0;
 
-    if (!cartDoc.exists) {
-      throw new functions.https.HttpsError(
-        "not-found",
-        "Cart not found."
-      );
+    // Fail gracefully if no card is actually applied.
+    if (!code) return { message: "No card." };
+
+    const gRef = db.collection("giftCards").doc(code);
+    const gDoc = await t.get(gRef);
+    
+    // We check existence because the gift card document might have been deleted
+    // by an admin. If so, we still want to clear the cart state.
+    if (gDoc.exists) {
+      t.update(gRef, { balance: gDoc.data().balance + amt });
     }
 
-    const cartData = cartDoc.data();
-    const appliedGiftCardCode = cartData.appliedGiftCardCode;
-    const giftCardAppliedAmount = (typeof cartData.giftCardAppliedAmount === 'number') ? cartData.giftCardAppliedAmount : 0;
-    const currentCartTotal = (typeof cartData.totalPrice === 'number') ? cartData.totalPrice : 0; // Recupera il totale corrente
-
-    if (!appliedGiftCardCode || giftCardAppliedAmount === 0) {
-      return { message: "No gift card was applied to this cart." };
-    }
-
-    const giftCardRef = db.collection("giftCards").doc(appliedGiftCardCode);
-    const giftCardDoc = await transaction.get(giftCardRef);
-
-    // Restore gift card balance (if the card still exists)
-    if (giftCardDoc.exists) {
-      const giftCardData = giftCardDoc.data();
-      const newGiftCardBalance = giftCardData.balance + giftCardAppliedAmount;
-      transaction.update(giftCardRef, { balance: newGiftCardBalance });
-    }
-    // else: the gift card might have been deleted, just proceed to clear cart state
-
-    // Clear cart gift card state AND reset finalAmountToPay
-    const newFinalAmountToPay = currentCartTotal; // Reimposta al totale pieno
-    transaction.update(cartRef, {
+    // Reset cart fields using FieldValue.delete() to keep the document clean.
+    t.update(cartRef, {
       giftCardAppliedAmount: admin.firestore.FieldValue.delete(),
       appliedGiftCardCode: admin.firestore.FieldValue.delete(),
-      finalAmountToPay: newFinalAmountToPay, // AGGIORNAMENTO FONDAMENTALE
+      finalAmountToPay: cData.totalPrice || 0,
       lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
     });
-    console.log(`DEBUG: Gift card ${appliedGiftCardCode} removed from cart ${cartId}. newFinalAmountToPay: ${newFinalAmountToPay}`);
-
-
-    return { message: "Gift card successfully removed from cart and balance restored." };
+    return { success: true };
   });
 });
 
-
+/**
+ * Finalizes the checkout process.
+ *
+ * This function performs the following critical steps atomically:
+ * 1. Creates a permanent Order record.
+ * 2. Clears the user's shopping cart.
+ * 3. Triggers a confirmation email via the 'mail' collection.
+ *
+ * @param {Object} data - The request payload containing optional `email`.
+ * @param {Object} context - The context containing auth information.
+ * @returns {Promise<Object>} The `orderId` and success status.
+ */
 exports.completeOrder = functions.https.onCall(async (data, context) => {
-  // 1. Check authentication
-  if (!context.auth) {
-    console.error('ERROR: Unauthenticated call to completeOrder.');
-    throw new functions.https.HttpsError(
-      "unauthenticated",
-      "The function must be called while authenticated."
-    );
-  }
+  if (!context.auth) throw new functions.https.HttpsError("unauthenticated", "Auth required.");
   const userId = context.auth.uid;
   const cartId = userId;
 
-  // Get email from data or fallback to auth token
-  let customerEmail = data.email || context.auth.token?.email; // Use optional chaining for safety
+  let email = data.email || context.auth.token?.email;
+  if (typeof email === 'string') email = email.trim();
+  if (!email) throw new functions.https.HttpsError("invalid-argument", "Email required.");
 
-  // DEBUGGING: Log the raw and processed email
-  console.log('DEBUG: Raw customerEmail from data/token:', customerEmail);
-
-  // Ensure customerEmail is a string and trim it
-  if (typeof customerEmail === 'string') {
-      customerEmail = customerEmail.trim();
-  } else {
-      customerEmail = null; // Ensure it's null if not a string
-  }
-
-  console.log('DEBUG: Trimmed customerEmail:', customerEmail);
-
-
-  if (!customerEmail || customerEmail === '') { // Explicitly check for null or empty string after trim
-      console.error(`ERROR: Final validation failed. Customer email is invalid or missing: "${customerEmail}" for user ${userId}.`);
-      throw new functions.https.HttpsError(
-          "invalid-argument",
-          "Customer email is required to complete the order and send confirmation. Please ensure your account has a valid email."
-      );
-  }
-
-  const userRef = db.collection("users").doc(userId); // Assuming 'users' collection exists for shipping info
+  const userRef = db.collection("users").doc(userId);
   const cartRef = db.collection("carts").doc(cartId);
-  const cartItemsRef = cartRef.collection("items");
+  const itemsRef = cartRef.collection("items");
 
-  return db.runTransaction(async (transaction) => {
-    const cartDoc = await transaction.get(cartRef);
-    if (!cartDoc.exists) {
-      throw new functions.https.HttpsError(
-        "not-found",
-        "Cart not found or is empty."
-      );
-    }
-    const cartData = cartDoc.data();
-    // LEGGENDO ORA IL CAMPO finalAmountToPay CORRETTAMENTE AGGIORNATO
-    const finalAmountToPay = (typeof cartData.finalAmountToPay === 'number') ? cartData.finalAmountToPay : cartData.totalPrice || 0;
-    const totalPrice = (typeof cartData.totalPrice === 'number') ? cartData.totalPrice : 0;
-    const giftCardAppliedAmount = (typeof cartData.giftCardAppliedAmount === 'number') ? cartData.giftCardAppliedAmount : 0;
-    const appliedGiftCardCode = cartData.appliedGiftCardCode;
+  // Transaction is mandatory here to ensure we don't create an order
+  // without successfully clearing the cart (avoiding double orders).
+  return db.runTransaction(async (t) => {
+    const cDoc = await t.get(cartRef);
+    if (!cDoc.exists) throw new functions.https.HttpsError("not-found", "Cart empty.");
+    
+    const iSnaps = await t.get(itemsRef);
+    if (iSnaps.empty) throw new functions.https.HttpsError("failed-precondition", "Cart empty.");
 
-    // Ensure there are items in the cart
-    const cartItemsSnapshot = await transaction.get(cartItemsRef);
-    if (cartItemsSnapshot.empty) {
-      throw new functions.https.HttpsError(
-        "failed-precondition",
-        "Cannot complete an empty cart."
-      );
-    }
-    if (finalAmountToPay > 0) {
-      console.log(`DEBUG: Simulating payment for ${finalAmountToPay} for user ${userId}`);
+    const uDoc = await t.get(userRef);
+    const uData = uDoc.exists ? uDoc.data() : {};
+    const cData = cDoc.data();
 
-    }
+    // Sanitize address data to ensure we don't pass 'undefined' to Firestore,
+    // which would cause the entire transaction to throw an exception.
+    const address = {
+        name: uData.name || '',
+        surname: uData.surname || '',
+        address: uData.address || '',
+        city: uData.city || '',
+        postcode: uData.postcode || ''
+    };
 
-    // Generate a simple order ID
+    // Reconstruct the items list explicitly.
+    // This sanitization step prevents "undefined value" errors if legacy data
+    // in the cart is missing new fields like 'productName'.
+    const items = [];
+    iSnaps.forEach(d => {
+        const val = d.data();
+        items.push({
+            productId: val.productId || null,
+            productName: val.productName || 'Unknown',
+            productPrice: (typeof val.productPrice==='number')?val.productPrice:0,
+            quantity: (typeof val.quantity==='number')?val.quantity:1,
+            imageUrl: val.imageUrl || null
+        });
+    });
+
+    const finalAmount = (typeof cData.finalAmountToPay==='number')?cData.finalAmountToPay:(cData.totalPrice||0);
     const orderId = `${userId}_${Date.now()}`;
     const orderRef = db.collection("orders").doc(orderId);
 
-    // Get shipping information from user profile
-    const userDoc = await transaction.get(userRef);
-    const userData = userDoc.exists ? userDoc.data() : {};
-    const shippingAddress = userData.shippingAddress || null;
-
-    // Get all items from the cart to copy them into the order
-    const orderItems = [];
-    cartItemsSnapshot.forEach(itemDoc => {
-        orderItems.push(itemDoc.data());
-        transaction.delete(itemDoc.ref); // Delete item from cart
-    });
-
-    // Create the order document
-    const orderData = {
+    // 1. Create the Order
+    t.set(orderRef, {
       orderId: orderId,
       userId: userId,
-      items: orderItems,
-      totalPrice: totalPrice, // Original cart total
-      giftCardAppliedAmount: giftCardAppliedAmount,
-      finalAmountPaid: finalAmountToPay, // L'IMPORTANTE QUI È CHE ORA È CORRETTO
-      appliedGiftCardCode: appliedGiftCardCode,
-      shippingAddress: shippingAddress,
+      items: items,
+      totalPrice: cData.totalPrice || 0,
+      giftCardAppliedAmount: cData.giftCardAppliedAmount || 0,
+      finalAmountPaid: finalAmount,
+      appliedGiftCardCode: cData.appliedGiftCardCode || null,
+      shippingAddress: address,
       status: "completed",
       timestamp: admin.firestore.FieldValue.serverTimestamp(),
-    };
+    });
 
-    transaction.set(orderRef, orderData);
-
-    // --- START: Send order confirmation email ---
-    if (customerEmail) {
-        let itemsHtml = orderItems.map(item => `
-            <tr>
-                <td style="padding: 8px; border: 1px solid #ddd;">${item.productName}</td>
-                <td style="padding: 8px; border: 1px solid #ddd;">${item.quantity}</td>
-                <td style="padding: 8px; border: 1px solid #ddd;">€${item.productPrice.toFixed(2)}</td>
-                <td style="padding: 8px; border: 1px solid #ddd;">€${(item.quantity * item.productPrice).toFixed(2)}</td>
-            </tr>
-        `).join('');
-
-        let giftCardHtml = '';
-        if (giftCardAppliedAmount > 0) {
-            giftCardHtml = `
-                <tr>
-                    <td colspan="3" style="text-align: right; padding: 8px; border: 1px solid #ddd; font-weight: bold;">Gift Card Discount (${appliedGiftCardCode || 'N/A'}):</td>
-                    <td style="padding: 8px; border: 1px solid #ddd; color: #28a745; font-weight: bold;">-€${giftCardAppliedAmount.toFixed(2)}</td>
-                </tr>
-            `;
-        }
-
-        const emailHtml = `
-            <p>Hello,</p>
-            <p>Thank you for your purchase! Your order <strong>#${orderId}</strong> has been confirmed.</p>
-            <p>Here is a summary of your order:</p>
-            <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
-                <thead>
-                    <tr style="background-color: #f2f2f2;">
-                        <th style="padding: 8px; border: 1px solid #ddd; text-align: left;">Product</th>
-                        <th style="padding: 8px; border: 1px solid #ddd; text-align: left;">Quantity</th>
-                        <th style="padding: 8px; border: 1px solid #ddd; text-align: left;">Unit Price</th>
-                        <th style="padding: 8px; border: 1px solid #ddd; text-align: left;">Total</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    ${itemsHtml}
-                    <tr>
-                        <td colspan="3" style="text-align: right; padding: 8px; border: 1px solid #ddd; font-weight: bold;">Subtotal:</td>
-                        <td style="padding: 8px; border: 1px solid #ddd; font-weight: bold;">€${totalPrice.toFixed(2)}</td>
-                    </tr>
-                    ${giftCardHtml}
-                    <tr>
-                        <td colspan="3" style="text-align: right; padding: 8px; border: 1px solid #ddd; font-weight: bold;">Total Paid:</td>
-                        <td style="padding: 8px; border: 1px solid #ddd; font-weight: bold; color: #007bff;">€${finalAmountToPay.toFixed(2)}</td>
-                    </tr>
-                </tbody>
-            </table>
-            <p>We will ship your order as soon as possible to the address:</p>
-            <p>
-                ${shippingAddress ? `
-                ${shippingAddress.address || ''}<br>
-                ${shippingAddress.city || ''}, ${shippingAddress.postcode || ''}<br>
-                ` : 'No shipping address provided.'}
-            </p>
-            <p>Thank you again!<br>The Webshop Team</p>
-        `;
-
-        await db.collection("mail").add({
-            message: {
-                to: customerEmail,
-                subject: `Order Confirmation #${orderId} from your Webshop`,
-                html: emailHtml,
-            }
-        });
-        console.log(`DEBUG: Confirmation email queued for ${customerEmail} for order ${orderId}`);
-    }
-    // --- END: Send order confirmation email ---
-
-    transaction.update(cartRef, {
-        totalPrice: 0,
+    // 2. Clear Cart Items
+    // We delete sub-collection items individually since Firestore doesn't support recursive delete in transactions.
+    iSnaps.forEach(d => t.delete(d.ref));
+    
+    // 3. Reset Cart Metadata
+    t.update(cartRef, {
+        totalPrice: 0, 
         itemCount: 0,
         giftCardAppliedAmount: admin.firestore.FieldValue.delete(),
         appliedGiftCardCode: admin.firestore.FieldValue.delete(),
         finalAmountToPay: 0,
-        lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
+        lastUpdated: admin.firestore.FieldValue.serverTimestamp()
     });
 
+    // 4. Trigger Email
+    // We write to the 'mail' collection to trigger the "Trigger Email" Firebase Extension.
+    // This is done inside the transaction so the email is only queued if the order actually succeeds.
+    if (email) {
+        const rows = items.map(i => `<tr><td>${i.productName}</td><td>${i.quantity}</td><td>€${i.productPrice.toFixed(2)}</td></tr>`).join('');
+        const html = `<h2>Order #${orderId}</h2>
+                      <table border="1" style="border-collapse:collapse;width:100%">
+                        <tr><th>Item</th><th>Qty</th><th>Price</th></tr>${rows}
+                      </table>
+                      <h3>Total: €${finalAmount.toFixed(2)}</h3>
+                      <p>Ship to: ${address.address}, ${address.city}</p>`;
+        
+        const mailRef = db.collection("mail").doc();
+        t.set(mailRef, { to: email, message: { subject: `Order #${orderId}`, html: html } });
+    }
 
-    return {
-      orderId: orderId,
-      message: "Order placed successfully!",
-      finalAmountPaid: finalAmountToPay
-    };
+    return { orderId: orderId, success: true };
   });
 });

@@ -61,20 +61,26 @@ class CartRepository {
   /// Adds a new item or updates an existing one in the cart.
   ///
   /// * [userId]: The owner of the cart.
-  /// * [productId]: The item to add.
+  /// * [product]: The full product object to add (includes name, price, image).
   /// * [quantity]: The new total quantity.
   Future<void> addOrUpdateCartItem(
-      String userId, String productId, int quantity) async {
+      String userId, Product product, int quantity) async {
     final cartRef = _firestore.collection('carts').doc(userId);
-    final itemRef = cartRef.collection('items').doc(productId);
+    final itemRef = cartRef.collection('items').doc(product.id);
 
     // We ensure the parent document exists by setting the ownerUID.
     // Using merge: true prevents overwriting other fields (like appliedGiftCardCode)
     // if the document already exists.
     await cartRef.set({'ownerUID': userId}, SetOptions(merge: true));
 
+    // CRITICAL UPDATE: We now save the full product details (snapshot).
+    // This allows Cloud Functions to read the name/price for emails
+    // without needing to query the 'products' collection again.
     await itemRef.set({
-      'productId': productId,
+      'productId': product.id,
+      'productName': product.name,      // Saved for Email/History
+      'productPrice': product.price,    // Saved for Calculations
+      'imageUrl': product.imageUrl,     // Saved for UI
       'quantity': quantity,
       // Storing a timestamp helps with sorting or debugging order history later.
       'updatedAt': FieldValue.serverTimestamp(),

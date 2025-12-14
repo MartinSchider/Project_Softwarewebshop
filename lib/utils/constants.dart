@@ -9,8 +9,6 @@ import 'package:flutter/material.dart';
 /// Note: In a larger, multi-language app, user-facing strings should be moved
 /// to localization files (ARB/Intl), but for this scope, constants are sufficient.
 
-/// FIX: constant names have lowerCamelCase style instead of k-prefix.
-
 // --- App Name & Titles ---
 
 /// The main display name of the application shown in the AppBar.
@@ -73,9 +71,6 @@ const String googleLogoUrl =
     'https://upload.wikimedia.org/wikipedia/commons/4/4a/Logo_2013_Google.png';
 
 // --- Colors ---
-// Note: While most colors should be derived from Theme.of(context),
-// these constants allow for consistent usage of specific semantic colors
-// (like Success/Error) across the app without defining a full custom ThemeExtension.
 
 /// Color used for positive feedback (e.g., "Added to cart", "Order successful").
 const Color successColor = Colors.green;
@@ -84,7 +79,6 @@ const Color successColor = Colors.green;
 const Color errorColor = Colors.red;
 
 /// Color used for informational messages or links.
-/// Typed as MaterialColor to allow access to different shades if needed.
 const MaterialColor infoColor = Colors.blue;
 
 /// Standard white, used for text on dark backgrounds or card backgrounds.
@@ -95,3 +89,19 @@ const Color blackColor = Colors.black;
 
 /// A subtle grey used for the app background to make white cards pop.
 const Color lightGreyColor = Color(0xFFF5F5F5);
+
+// --- Categories ---
+
+/// List of available product categories for filtering.
+const List<String> productCategories = [
+  'All',
+  'Electronics',
+  'Clothing',
+  'Home',
+  'Beauty',
+  'Sports',
+  'Gadget', // Nuovo
+  'Music',  // Nuovo
+  'Food',   // Nuovo
+  'General',
+];

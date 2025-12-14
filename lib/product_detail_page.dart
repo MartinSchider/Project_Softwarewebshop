@@ -1,21 +1,24 @@
 // lib/product_detail_page.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:webshop/models/product.dart';
 import 'package:webshop/providers/cart_providers.dart';
+import 'package:webshop/providers/wishlist_provider.dart';
 import 'package:webshop/services/auth_service.dart';
 import 'package:webshop/utils/constants.dart';
 import 'package:webshop/auth_page.dart';
 import 'package:webshop/widgets/custom_image.dart';
+import 'package:webshop/utils/ui_helper.dart';
 
-/// Displays the full details of a selected product.
+/// A screen that displays detailed information about a specific product.
 ///
-/// This screen allows the user to:
-/// 1. View high-resolution images and full descriptions.
-/// 2. Select a quantity to purchase.
-/// 3. Add the product to the shopping cart.
+/// This page allows the user to:
+/// * View product images and descriptions.
+/// * Check stock status.
+/// * Select a quantity.
+/// * Add the item to the cart or wishlist.
 class ProductDetailPage extends ConsumerStatefulWidget {
-  /// The product object passed from the listing screen.
   final Product product;
 
   const ProductDetailPage({
@@ -29,79 +32,80 @@ class ProductDetailPage extends ConsumerStatefulWidget {
 
 class _ProductDetailPageState extends ConsumerState<ProductDetailPage> {
   final AuthService _authService = AuthService();
-
-  // Local state for the quantity selector. Defaults to 1 item.
+  
+  // Start with a default quantity of 1 to allow immediate addition.
   int _quantity = 1;
 
-  /// Increases the selected quantity.
+  /// Increases the selected quantity, ensuring it doesn't exceed available stock.
   void _incrementQuantity() {
-    setState(() {
-      _quantity++;
-    });
-  }
-
-  /// Decreases the selected quantity (minimum 1).
-  void _decrementQuantity() {
-    if (_quantity > 1) {
-      setState(() {
-        _quantity--;
-      });
+    if (_quantity < widget.product.stock) {
+      setState(() => _quantity++);
+    } else {
+      // UX: Feedback when the user hits the stock limit.
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Maximum available stock reached.'),
+          duration: Duration(seconds: 1), 
+        ),
+      );
     }
   }
 
-  /// Handles the "Add to Cart" action.
-  ///
-  /// This method performs two main tasks:
-  /// 1. **Auth Check:** Verifies if the user is logged in. If not, shows a login dialog.
-  /// 2. **Service Call:** Calls [CartService] to add the item with the selected quantity.
+  /// Decreases the quantity, ensuring it stays above 1.
+  void _decrementQuantity() {
+    if (_quantity > 1) setState(() => _quantity--);
+  }
+
+  /// Handles the "Add to Cart" action with authentication checks.
   Future<void> _addToCart() async {
-    // 1. Auth Check: We gate the cart functionality behind authentication.
+    // Gatekeeper: Ensure only logged-in users can shop.
+    if (_authService.currentUser == null) {
+      _showLoginDialog();
+      return;
+    }
+    try {
+      await ref.read(cartServiceProvider).addProductToCart(widget.product, _quantity);
+      if (mounted) {
+        UiHelper.showSuccess(context, 'Added $_quantity x ${widget.product.name} to cart!');
+      }
+    } catch (e) {
+      if (mounted) UiHelper.showError(context, e);
+    }
+  }
+
+  // --- WISHLIST LOGIC ---
+  
+  /// Toggles the product's presence in the user's wishlist.
+  Future<void> _toggleWishlist(bool isFavorite) async {
+    // 1. Check Auth: Wishlist data is user-specific.
     if (_authService.currentUser == null) {
       _showLoginDialog();
       return;
     }
 
-    try {
-      // 2. Call the Service via Riverpod provider.
-      await ref
-          .read(cartServiceProvider)
-          .addProductToCart(widget.product, _quantity);
+    final controller = ref.read(wishlistControllerProvider);
 
-      // Provide visual feedback if the widget is still active.
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Added $_quantity x ${widget.product.name} to cart!'),
-            backgroundColor: successColor,
-            duration: const Duration(seconds: 2),
-          ),
-        );
-        // Optional: Close the page to return to the list
-        // Navigator.of(context).pop();
+    try {
+      if (isFavorite) {
+        await controller.remove(widget.product.id);
+        if (mounted) UiHelper.showSuccess(context, "Removed from wishlist");
+      } else {
+        await controller.add(widget.product.id);
+        if (mounted) UiHelper.showSuccess(context, "Added to wishlist");
       }
     } catch (e) {
-      // Error Handling: Show specific error (e.g., "Not enough stock").
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error adding to cart: $e'),
-            backgroundColor: errorColor,
-          ),
-        );
-      }
+      if (mounted) UiHelper.showError(context, e);
     }
   }
 
-  /// Displays a dialog prompting the user to log in.
-  ///
-  /// This is a "soft block" - allows browsing but restricts transactional actions.
+  /// Displays a dialog prompting anonymous users to sign in.
   void _showLoginDialog() {
     showDialog(
       context: context,
       builder: (BuildContext context) {
         return AlertDialog(
           title: const Text('Access required'),
-          content: const Text('You must log in to add products to the cart.'),
+          content: const Text('You must log in to perform this action.'),
           actions: <Widget>[
             TextButton(
               child: const Text('Cancel'),
@@ -110,8 +114,7 @@ class _ProductDetailPageState extends ConsumerState<ProductDetailPage> {
             ElevatedButton(
               child: const Text('Login / Sign Up'),
               onPressed: () {
-                Navigator.of(context).pop(); // Close dialog
-                // Navigate to the Auth Page
+                Navigator.of(context).pop();
                 Navigator.of(context).push(
                   MaterialPageRoute(builder: (context) => const AuthPage()),
                 );
@@ -125,6 +128,17 @@ class _ProductDetailPageState extends ConsumerState<ProductDetailPage> {
 
   @override
   Widget build(BuildContext context) {
+    // Calculate stock status once to drive UI logic.
+    final bool isOutOfStock = widget.product.stock <= 0;
+
+    // --- WISHLIST STATE ---
+    final wishlistIdsAsync = ref.watch(wishlistIdsProvider);
+    // Determine if this specific product is in the wishlist list.
+    final bool isFavorite = wishlistIdsAsync.maybeWhen(
+      data: (ids) => ids.contains(widget.product.id),
+      orElse: () => false,
+    );
+
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.product.name),
@@ -134,14 +148,14 @@ class _ProductDetailPageState extends ConsumerState<ProductDetailPage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // --- Product Image ---
-            // Uses cached network image for performance.
             if (widget.product.imageUrl.isNotEmpty)
               SizedBox(
                 height: 300,
                 width: double.infinity,
                 child: CustomImage(
                   imageUrl: widget.product.imageUrl,
-                  fit: BoxFit.contain, // Ensures the whole product is visible
+                  // Use 'contain' to ensure the whole product is visible.
+                  fit: BoxFit.contain,
                 ),
               )
             else
@@ -159,7 +173,7 @@ class _ProductDetailPageState extends ConsumerState<ProductDetailPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // --- Title and Price ---
+                  // --- Header: Name & Price ---
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
@@ -185,6 +199,31 @@ class _ProductDetailPageState extends ConsumerState<ProductDetailPage> {
                       ),
                     ],
                   ),
+                  
+                  const SizedBox(height: smallPadding),
+
+                  // --- Stock Indicator ---
+                  Row(
+                    children: [
+                      Icon(
+                        isOutOfStock ? Icons.error_outline : Icons.check_circle_outline,
+                        color: isOutOfStock ? errorColor : successColor,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        isOutOfStock 
+                            ? 'Out of Stock' 
+                            : 'In Stock: ${widget.product.stock} units',
+                        style: TextStyle(
+                          color: isOutOfStock ? errorColor : successColor,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      ),
+                    ],
+                  ),
+
                   const SizedBox(height: defaultPadding),
 
                   // --- Description ---
@@ -217,23 +256,29 @@ class _ProductDetailPageState extends ConsumerState<ProductDetailPage> {
                       const SizedBox(width: 16),
                       Container(
                         decoration: BoxDecoration(
-                          border: Border.all(color: Colors.grey),
+                          border: Border.all(color: Colors.grey.shade400),
                           borderRadius: BorderRadius.circular(8),
+                          // Visual cue: gray out if out of stock.
+                          color: isOutOfStock ? Colors.grey.shade200 : null,
                         ),
                         child: Row(
                           children: [
                             IconButton(
                               icon: const Icon(Icons.remove),
-                              onPressed: _decrementQuantity,
+                              onPressed: isOutOfStock || _quantity <= 1 
+                                  ? null 
+                                  : _decrementQuantity,
                             ),
                             Text(
-                              '$_quantity',
+                              isOutOfStock ? '0' : '$_quantity',
                               style: const TextStyle(
                                   fontSize: 18, fontWeight: FontWeight.bold),
                             ),
                             IconButton(
                               icon: const Icon(Icons.add),
-                              onPressed: _incrementQuantity,
+                              onPressed: isOutOfStock || _quantity >= widget.product.stock 
+                                  ? null 
+                                  : _incrementQuantity,
                             ),
                           ],
                         ),
@@ -243,18 +288,54 @@ class _ProductDetailPageState extends ConsumerState<ProductDetailPage> {
 
                   const SizedBox(height: 24),
 
-                  // --- Add to Cart Button ---
-                  SizedBox(
-                    width: double.infinity,
-                    height: 50,
-                    child: ElevatedButton.icon(
-                      onPressed: _addToCart,
-                      icon: const Icon(Icons.shopping_cart),
-                      label: Text(
-                          'Add to Cart (€${(widget.product.price * _quantity).toStringAsFixed(2)})',
-                          style: const TextStyle(fontSize: 18)),
-                    ),
+                  // --- ACTION BUTTONS ROW ---
+                  Row(
+                    children: [
+                      // 1. WISHLIST BUTTON (Square)
+                      Container(
+                        height: 50, // Matches height of the cart button for symmetry.
+                        width: 50,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(smallPadding),
+                          border: Border.all(
+                            color: isFavorite ? Colors.red : Colors.grey.shade400,
+                            width: 1.5,
+                          ),
+                          color: isFavorite ? Colors.red.withOpacity(0.1) : Colors.transparent,
+                        ),
+                        child: IconButton(
+                          icon: Icon(
+                            isFavorite ? Icons.favorite : Icons.favorite_border,
+                            color: isFavorite ? Colors.red : Colors.grey,
+                          ),
+                          onPressed: () => _toggleWishlist(isFavorite),
+                        ),
+                      ),
+                      
+                      const SizedBox(width: 16), // Spacing
+
+                      // 2. ADD TO CART BUTTON (Expanded)
+                      Expanded(
+                        child: SizedBox(
+                          height: 50,
+                          child: ElevatedButton.icon(
+                            onPressed: isOutOfStock ? null : _addToCart,
+                            icon: const Icon(Icons.shopping_cart),
+                            label: Text(
+                                isOutOfStock 
+                                    ? 'Out of Stock' 
+                                    : 'Add to Cart (€${(widget.product.price * _quantity).toStringAsFixed(2)})',
+                                // Use a slightly smaller font to ensure the price fits on smaller screens.
+                                style: const TextStyle(fontSize: 16)), 
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: isOutOfStock ? Colors.grey : null,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
+                  const SizedBox(height: 24), // Extra bottom padding for scrolling comfortable.
                 ],
               ),
             ),

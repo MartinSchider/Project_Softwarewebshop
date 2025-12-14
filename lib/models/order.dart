@@ -12,7 +12,7 @@ import 'package:webshop/utils/constants.dart';
 /// order history data remains consistent throughout the application lifecycle.
 @immutable
 class Order {
-  /// The unique document identifier from Firestore.
+  /// The unique document ID from Firestore.
   final String id;
 
   /// The user-facing order identifier (e.g., "#12345").
@@ -81,10 +81,13 @@ class Order {
               '', // Description is omitted in order history to save DB space.
           price: (itemData['productPrice'] as num?)?.toDouble() ?? 0.0,
           imageUrl: itemData['imageUrl'] ?? defaultNoImageUrl,
+          
           // We explicitly set stock to 0 because this is a historical record.
-          // The current inventory level of the product is irrelevant to a past order,
-          // and passing 0 satisfies the Product model's requirement without needing a DB lookup.
           stock: 0,
+          
+          // FIX: Added 'category' parameter which is now required by the Product model.
+          // We try to read it from history, otherwise default to 'General'.
+          category: itemData['category'] ?? 'General', 
         ),
         quantity: itemData['quantity'] as int? ?? 0,
       );

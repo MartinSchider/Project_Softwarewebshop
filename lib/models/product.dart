@@ -31,6 +31,10 @@ class Product {
   /// before adding items to the cart.
   final int stock;
 
+  /// The category of the product (e.g., 'Electronics', 'Food', 'General').
+  /// Used for filtering the product list in the UI.
+  final String category;
+
   /// Creates a constant [Product] instance.
   ///
   /// All fields are required to ensure the UI never has to handle partially
@@ -42,6 +46,7 @@ class Product {
     required this.price,
     required this.imageUrl,
     required this.stock,
+    required this.category,
   });
 
   /// Factory constructor to transform Firestore data into a [Product] object.
@@ -68,14 +73,17 @@ class Product {
       // Casting to 'num?' covers both cases, then we convert to double.
       price: (data['productPrice'] as num?)?.toDouble() ?? 0.0,
 
+      // Use the new constant name (defaultNoImageUrl)
       imageUrl: data['imageUrl'] as String? ?? defaultNoImageUrl,
 
       // STOCK HANDLING LOGIC:
       // If the 'stock' field is missing in the DB (legacy data), we default to 999.
-      // Why? Defaulting to 0 would prevent users from adding the product to the cart
-      // because the CartService checks (stock < quantity).
-      // Using a high number ensures legacy products are sellable during testing.
+      // Why? Defaulting to 0 would prevent users from adding the product to the cart.
       stock: (data['stock'] as int?) ?? 999,
+
+      // CATEGORY HANDLING:
+      // If the category is missing, we assign 'General' to ensure it appears in lists.
+      category: data['category'] as String? ?? 'General',
     );
   }
 
@@ -90,6 +98,7 @@ class Product {
       'productPrice': price,
       'imageUrl': imageUrl,
       'stock': stock,
+      'category': category,
     };
   }
 }

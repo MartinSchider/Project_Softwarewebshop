@@ -6,165 +6,172 @@ import 'package:webshop/models/product.dart';
 import 'package:webshop/repositories/cart_repository.dart';
 import 'package:webshop/repositories/product_repository.dart';
 
-/// Manages the business logic for the shopping cart.
+/// Service responsible for the business logic of the shopping cart.
 ///
-/// This service acts as the orchestrator between the UI, the Firestore Database
-/// (via Repositories), and Cloud Functions (for complex logic like Gift Cards).
-///
-/// It handles:
-/// - Stock validation before adding items.
-/// - Synchronization of totals between Client and Server.
-/// - Secure execution of Cloud Functions.
+/// This class acts as a coordinator between the data layer ([CartRepository]),
+/// the product catalog ([ProductRepository]), and server-side logic ([FirebaseFunctions]).
+/// It enforces rules like stock validation and ensures data consistency between
+/// the client and the server.
 class CartService {
   final CartRepository _cartRepository = CartRepository();
   final ProductRepository _productRepository = ProductRepository();
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFunctions _functions = FirebaseFunctions.instance;
 
-  /// Helper getter to retrieve the current authenticated user ID.
+  /// Helper to get the authenticated user's ID safely.
   String? get _currentUserId => _auth.currentUser?.uid;
 
-  /// Provides a real-time stream of the cart items.
+  /// Returns a stream of cart items for the current user.
   ///
-  /// Used by the UI to display the product list.
+  /// This stream is used by the UI to display the list of products in the cart.
+  /// It automatically handles joining product details with cart quantities.
   Stream<List<CartItem>> getCartStream() {
     final userId = _currentUserId;
-    // Graceful fallback: If no user is logged in, return an empty stream
-    // instead of throwing an error, preventing UI crashes on logout.
-    if (userId == null) {
-      return Stream.value([]);
-    }
-    // Dependency Injection: We pass the product fetcher to the cart repository
-    // to allow it to "join" cart data with product data efficiently.
+    if (userId == null) return Stream.value([]);
     return _cartRepository.getCartStream(
         userId, _productRepository.getProductById);
   }
 
-  /// Provides a stream of raw cart metadata (e.g., total price, applied codes).
+  /// Returns a stream of cart metadata (totals, applied codes).
+  ///
+  /// Separated from [getCartStream] to allow the UI to listen to price changes
+  /// without re-rendering the entire list of items.
   Stream<Map<String, dynamic>> getCartDetailsStream() {
     final userId = _currentUserId;
-    if (userId == null) {
-      return Stream.value({});
-    }
+    if (userId == null) return Stream.value({});
     return _cartRepository.getCartDetailsStream(userId);
   }
 
-  /// INTERNAL HELPER: Calculates totals locally and saves them to Firestore.
+  /// Recalculates the cart total locally and updates Firestore.
   ///
-  /// **Why is this necessary?**
-  /// While the Flutter app calculates totals in real-time for the UI (speed),
-  /// the server-side Cloud Functions (which verify Gift Cards) need to read
-  /// the *current* cart total from the database to ensure the discount is valid.
-  /// This function bridges that gap by syncing the client's calculation to the DB.
+  /// **Reasoning:**
+  /// While Cloud Functions also calculate totals, updating them from the client
+  /// provides immediate UI feedback (optimistic UI) and ensures that even if
+  /// the Cloud Function is slow, the user sees a reasonably accurate total.
   Future<void> _syncCartTotals(String userId) async {
-    // 1. Fetch the latest state of items
     final items = await _cartRepository.getCartOnce(
         userId, _productRepository.getProductById);
 
-    // 2. Calculate mathematical total
     double total = 0.0;
     for (var item in items) {
       total += item.product.price * item.quantity;
     }
 
-    // 3. Persist to DB so Cloud Functions can read it
     await _cartRepository.updateCartTotals(userId, total, items.length);
   }
 
-  /// Adds a [product] to the cart or updates its quantity if it already exists.
+  /// Adds a specific quantity of a [product] to the cart.
   ///
-  /// * [quantity]: The number of items to add (usually 1).
-  Future<void> addProductToCart(Product product, int quantity) async {
+  /// This method performs a read-before-write operation to:
+  /// 1. Check if the product is already in the cart.
+  /// 2. Validate that the *total* projected quantity does not exceed available stock.
+  Future<void> addProductToCart(Product product, int quantityToAdd) async {
     final userId = _currentUserId;
-    if (userId == null) {
-      throw Exception('User not logged in.');
+    if (userId == null) throw Exception('User not logged in.');
+
+    // We need the current state to determine if this is a new item or an increment to an existing one.
+    final currentCart = await _cartRepository.getCartOnce(
+        userId, _productRepository.getProductById);
+
+    // Calculate existing quantity safely.
+    int currentQuantityInCart = 0;
+    try {
+      final existingItem = currentCart.firstWhere(
+        (item) => item.product.id == product.id,
+      );
+      currentQuantityInCart = existingItem.quantity;
+    } catch (_) {
+      // Item not found in cart, so we treat it as a new addition (0 initial quantity).
     }
 
-    // We use an "Upsert" strategy in the repository: if the item exists,
-    // it merges the data; if not, it creates it.
-    await _cartRepository.addOrUpdateCartItem(userId, product.id, quantity);
+    final int newTotalQuantity = currentQuantityInCart + quantityToAdd;
 
-    // Sync triggers immediately to ensure DB totals are correct for checkout
+    // Stock Validation: Prevent adding more items than physically available.
+    if (newTotalQuantity > product.stock) {
+      throw Exception(
+          'Cannot add $quantityToAdd items. You already have $currentQuantityInCart in cart and stock is only ${product.stock}.');
+    }
+
+    // Persist the change.
+    // We pass the full [product] object to ensure that the denormalized data
+    // in the cart (name, price, image) is updated to the latest version from the catalog.
+    await _cartRepository.addOrUpdateCartItem(
+        userId, product, newTotalQuantity);
+
     await _syncCartTotals(userId);
   }
 
-  /// Completely removes a specific item type from the cart.
+  /// Removes a single item type from the cart entirely.
   Future<void> removeCartItem(String cartItemId) async {
     final userId = _currentUserId;
-    if (userId == null) {
-      throw Exception('User not logged in.');
-    }
+    if (userId == null) throw Exception('User not logged in.');
     await _cartRepository.removeCartItem(userId, cartItemId);
-    await _syncCartTotals(userId); // Re-calculate totals after removal
+    await _syncCartTotals(userId);
   }
 
-  /// Updates the quantity of a specific cart item.
+  /// Updates the quantity of an existing cart item.
   ///
-  /// Includes business logic validation:
-  /// 1. If [newQuantity] is <= 0, the item is removed.
-  /// 2. Checks current stock availability before updating.
+  /// If [newQuantity] is zero or less, the item is removed.
+  /// Otherwise, it verifies stock before updating.
   Future<void> updateCartItemQuantity(
       String cartItemId, int newQuantity) async {
     final userId = _currentUserId;
-    if (userId == null) {
-      throw Exception('User not logged in.');
-    }
+    if (userId == null) throw Exception('User not logged in.');
 
-    // Business Logic: Zero quantity means deletion
+    // Handle removal logic explicitly here to simplify the UI code.
     if (newQuantity <= 0) {
       await removeCartItem(cartItemId);
       return;
     }
 
-    // Fetch product to check stock
+    // We must fetch the fresh product data to check the current stock level,
+    // as the cached version in the cart might be stale.
     final product = await _productRepository.getProductById(cartItemId);
     if (product == null) {
       throw Exception('Product not found for cart item $cartItemId');
     }
 
-    // Business Logic: Stock Validation
     if (product.stock < newQuantity) {
       throw Exception(
           'Not enough stock for ${product.name}. Available: ${product.stock}. Requested: $newQuantity');
     }
 
-    await _cartRepository.addOrUpdateCartItem(userId, cartItemId, newQuantity);
-    await _syncCartTotals(userId); // Keep DB in sync
+    // Update with full product details to keep cart snapshots fresh.
+    await _cartRepository.addOrUpdateCartItem(userId, product, newQuantity);
+    await _syncCartTotals(userId);
   }
 
-  /// Clears the entire cart (e.g., after logout or emptying cart).
+  /// Clears all items from the cart.
+  ///
+  /// Typically called after a successful order or when the user manually empties the cart.
   Future<void> clearCart() async {
     final userId = _currentUserId;
-    if (userId == null) {
-      throw Exception('User not logged in.');
-    }
+    if (userId == null) throw Exception('User not logged in.');
     await _cartRepository.clearCart(userId);
   }
 
-  /// Fetches the cart items once (non-stream).
+  /// Fetches a one-time snapshot of the cart.
+  ///
+  /// Useful for internal logic where a stream is overkill (e.g., calculating totals
+  /// before checkout).
   Future<List<CartItem>> getCartOnce() async {
     final userId = _currentUserId;
-    if (userId == null) {
-      return [];
-    }
+    if (userId == null) return [];
     return _cartRepository.getCartOnce(
         userId, _productRepository.getProductById);
   }
 
-  /// Calls a Firebase Cloud Function to validate and apply a Gift Card.
+  /// Applies a gift card code to the cart.
   ///
-  /// * [giftCardCode]: The alphanumeric code entered by the user.
-  ///
-  /// Returns a Map containing the result (success status, new totals).
+  /// This operation is delegated to a Cloud Function (`applyGiftCard`) because
+  /// it involves sensitive validation (balance checks, expiry) that cannot be
+  /// securely handled on the client side.
   Future<Map<String, dynamic>> applyGiftCard(String giftCardCode) async {
     final userId = _currentUserId;
-    if (userId == null) {
-      throw Exception('User not logged in.');
-    }
+    if (userId == null) throw Exception('User not logged in.');
 
-    // CRITICAL: Force a sync before calling the Cloud Function.
-    // This ensures the server sees the most up-to-date cart total before
-    // attempting to apply a discount.
+    // Sync totals first to ensure the Cloud Function has the most up-to-date
+    // cart value to calculate the discount against.
     await _syncCartTotals(userId);
 
     try {
@@ -173,10 +180,6 @@ class CartService {
         'giftCardCode': giftCardCode,
         'cartId': userId,
       });
-
-      // We use Map.from() to safely convert the result.
-      // Direct casting or using '?? {}' can fail if the returned map type
-      // doesn't strictly match <String, dynamic>.
       return Map<String, dynamic>.from(result.data ?? {});
     } on FirebaseFunctionsException catch (e) {
       throw Exception('Gift Card Error: ${e.message}');
@@ -185,20 +188,19 @@ class CartService {
     }
   }
 
-  /// Calls a Firebase Cloud Function to remove an applied Gift Card.
+  /// Removes the currently applied gift card.
+  ///
+  /// Delegates to a Cloud Function (`removeGiftCard`) to ensure the balance is
+  /// correctly refunded to the gift card document in the database.
   Future<Map<String, dynamic>> removeGiftCard() async {
     final userId = _currentUserId;
-    if (userId == null) {
-      throw Exception('User not logged in.');
-    }
+    if (userId == null) throw Exception('User not logged in.');
 
     try {
       final callable = _functions.httpsCallable('removeGiftCard');
       final result = await callable.call<Map<String, dynamic>>({
         'cartId': userId,
       });
-
-      // Safely cast the response
       return Map<String, dynamic>.from(result.data ?? {});
     } on FirebaseFunctionsException catch (e) {
       throw Exception('Gift Card Error: ${e.message}');
