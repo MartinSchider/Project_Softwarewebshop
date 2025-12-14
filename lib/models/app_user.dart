@@ -46,7 +46,7 @@ class AppUser {
       postcode: data['postcode'] as String?,
       city: data['city'] as String?,
       // Read the admin flag from the database, defaulting to false if missing.
-      isAdmin: data['isAdmin'] as bool? ?? false, 
+      isAdmin: data['isAdmin'] as bool? ?? false,
     );
   }
 

@@ -78,9 +78,9 @@ class CartRepository {
     // without needing to query the 'products' collection again.
     await itemRef.set({
       'productId': product.id,
-      'productName': product.name,      // Saved for Email/History
-      'productPrice': product.price,    // Saved for Calculations
-      'imageUrl': product.imageUrl,     // Saved for UI
+      'productName': product.name, // Saved for Email/History
+      'productPrice': product.price, // Saved for Calculations
+      'imageUrl': product.imageUrl, // Saved for UI
       'quantity': quantity,
       // Storing a timestamp helps with sorting or debugging order history later.
       'updatedAt': FieldValue.serverTimestamp(),

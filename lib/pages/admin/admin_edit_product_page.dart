@@ -25,14 +25,14 @@ class AdminEditProductPage extends StatefulWidget {
 class _AdminEditProductPageState extends State<AdminEditProductPage> {
   final _formKey = GlobalKey<FormState>();
   final AdminRepository _repo = AdminRepository();
-  
+
   // Controllers to manage the text state of input fields.
   late TextEditingController _nameCtrl;
   late TextEditingController _descCtrl;
   late TextEditingController _priceCtrl;
   late TextEditingController _stockCtrl;
   late TextEditingController _imageCtrl;
-  
+
   // Default category if creating a new product.
   String _selectedCategory = 'General';
 
@@ -40,18 +40,18 @@ class _AdminEditProductPageState extends State<AdminEditProductPage> {
   void initState() {
     super.initState();
     final p = widget.product;
-    
+
     // Initialize controllers with existing data if editing, or empty strings if creating.
     _nameCtrl = TextEditingController(text: p?.name ?? '');
     _descCtrl = TextEditingController(text: p?.description ?? '');
-    
+
     // Numeric fields must be converted to strings for the text controllers.
     _priceCtrl = TextEditingController(text: p?.price.toString() ?? '');
     _stockCtrl = TextEditingController(text: p?.stock.toString() ?? '');
     _imageCtrl = TextEditingController(text: p?.imageUrl ?? '');
-    
+
     _selectedCategory = p?.category ?? 'General';
-    
+
     // Safety check: If the loaded category is no longer in our supported list
     // (e.g., deprecated), fallback to 'General' to prevent dropdown crashes.
     if (!productCategories.contains(_selectedCategory)) {
@@ -86,26 +86,27 @@ class _AdminEditProductPageState extends State<AdminEditProductPage> {
       // 3. Create the Product object from form data.
       final newProduct = Product(
         // If editing, keep the ID. If creating, use empty string (Repository will handle generation).
-        id: widget.product?.id ?? '', 
+        id: widget.product?.id ?? '',
         name: _nameCtrl.text.trim(),
         description: _descCtrl.text.trim(),
         price: double.parse(_priceCtrl.text.trim()),
         stock: int.parse(_stockCtrl.text.trim()),
         // Use default placeholder if the image URL field is left empty.
-        imageUrl: _imageCtrl.text.trim().isEmpty 
-            ? defaultNoImageUrl 
+        imageUrl: _imageCtrl.text.trim().isEmpty
+            ? defaultNoImageUrl
             : _imageCtrl.text.trim(),
         category: _selectedCategory,
       );
 
       // 4. Perform the async save operation.
       await _repo.saveProduct(newProduct);
-      
+
       // 5. Navigation & Feedback
       // Check mounted to ensure the widget is still on screen before using context.
       if (mounted) {
         Navigator.of(context).pop(); // Close the loading dialog
-        Navigator.of(context).pop(); // Close the edit page, returning to Dashboard
+        Navigator.of(context)
+            .pop(); // Close the edit page, returning to Dashboard
         UiHelper.showSuccess(context, 'Product saved successfully!');
       }
     } catch (e) {
@@ -134,49 +135,50 @@ class _AdminEditProductPageState extends State<AdminEditProductPage> {
                 validator: (v) => v!.isEmpty ? 'Required' : null,
               ),
               const SizedBox(height: 16),
-              
               DropdownButtonFormField<String>(
                 value: _selectedCategory,
                 decoration: const InputDecoration(labelText: 'Category'),
-                items: productCategories.map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(),
+                items: productCategories
+                    .map((c) => DropdownMenuItem(value: c, child: Text(c)))
+                    .toList(),
                 onChanged: (v) => setState(() => _selectedCategory = v!),
               ),
               const SizedBox(height: 16),
-
               TextFormField(
                 controller: _priceCtrl,
-                decoration: const InputDecoration(labelText: 'Price (€)', suffixText: '€'),
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: const InputDecoration(
+                    labelText: 'Price (€)', suffixText: '€'),
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
                 // Ensure the input is a valid double.
-                validator: (v) => double.tryParse(v ?? '') == null ? 'Invalid number' : null,
+                validator: (v) =>
+                    double.tryParse(v ?? '') == null ? 'Invalid number' : null,
               ),
               const SizedBox(height: 16),
-
               TextFormField(
                 controller: _stockCtrl,
                 decoration: const InputDecoration(labelText: 'Stock Quantity'),
                 keyboardType: TextInputType.number,
                 // Ensure the input is a valid integer.
-                validator: (v) => int.tryParse(v ?? '') == null ? 'Invalid integer' : null,
+                validator: (v) =>
+                    int.tryParse(v ?? '') == null ? 'Invalid integer' : null,
               ),
               const SizedBox(height: 16),
-
               TextFormField(
                 controller: _imageCtrl,
                 decoration: const InputDecoration(
                   labelText: 'Image URL',
-                  helperText: 'Leave empty for default image', // Helper moved inside decoration
+                  helperText:
+                      'Leave empty for default image', // Helper moved inside decoration
                 ),
               ),
               const SizedBox(height: 16),
-
               TextFormField(
                 controller: _descCtrl,
                 decoration: const InputDecoration(labelText: 'Description'),
                 maxLines: 3,
               ),
               const SizedBox(height: 32),
-
               SizedBox(
                 width: double.infinity,
                 height: 50,

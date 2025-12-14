@@ -32,7 +32,7 @@ class ProductDetailPage extends ConsumerStatefulWidget {
 
 class _ProductDetailPageState extends ConsumerState<ProductDetailPage> {
   final AuthService _authService = AuthService();
-  
+
   // Start with a default quantity of 1 to allow immediate addition.
   int _quantity = 1;
 
@@ -45,7 +45,7 @@ class _ProductDetailPageState extends ConsumerState<ProductDetailPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Maximum available stock reached.'),
-          duration: Duration(seconds: 1), 
+          duration: Duration(seconds: 1),
         ),
       );
     }
@@ -64,9 +64,12 @@ class _ProductDetailPageState extends ConsumerState<ProductDetailPage> {
       return;
     }
     try {
-      await ref.read(cartServiceProvider).addProductToCart(widget.product, _quantity);
+      await ref
+          .read(cartServiceProvider)
+          .addProductToCart(widget.product, _quantity);
       if (mounted) {
-        UiHelper.showSuccess(context, 'Added $_quantity x ${widget.product.name} to cart!');
+        UiHelper.showSuccess(
+            context, 'Added $_quantity x ${widget.product.name} to cart!');
       }
     } catch (e) {
       if (mounted) UiHelper.showError(context, e);
@@ -74,7 +77,7 @@ class _ProductDetailPageState extends ConsumerState<ProductDetailPage> {
   }
 
   // --- WISHLIST LOGIC ---
-  
+
   /// Toggles the product's presence in the user's wishlist.
   Future<void> _toggleWishlist(bool isFavorite) async {
     // 1. Check Auth: Wishlist data is user-specific.
@@ -199,21 +202,23 @@ class _ProductDetailPageState extends ConsumerState<ProductDetailPage> {
                       ),
                     ],
                   ),
-                  
+
                   const SizedBox(height: smallPadding),
 
                   // --- Stock Indicator ---
                   Row(
                     children: [
                       Icon(
-                        isOutOfStock ? Icons.error_outline : Icons.check_circle_outline,
+                        isOutOfStock
+                            ? Icons.error_outline
+                            : Icons.check_circle_outline,
                         color: isOutOfStock ? errorColor : successColor,
                         size: 20,
                       ),
                       const SizedBox(width: 8),
                       Text(
-                        isOutOfStock 
-                            ? 'Out of Stock' 
+                        isOutOfStock
+                            ? 'Out of Stock'
                             : 'In Stock: ${widget.product.stock} units',
                         style: TextStyle(
                           color: isOutOfStock ? errorColor : successColor,
@@ -265,8 +270,8 @@ class _ProductDetailPageState extends ConsumerState<ProductDetailPage> {
                           children: [
                             IconButton(
                               icon: const Icon(Icons.remove),
-                              onPressed: isOutOfStock || _quantity <= 1 
-                                  ? null 
+                              onPressed: isOutOfStock || _quantity <= 1
+                                  ? null
                                   : _decrementQuantity,
                             ),
                             Text(
@@ -276,8 +281,9 @@ class _ProductDetailPageState extends ConsumerState<ProductDetailPage> {
                             ),
                             IconButton(
                               icon: const Icon(Icons.add),
-                              onPressed: isOutOfStock || _quantity >= widget.product.stock 
-                                  ? null 
+                              onPressed: isOutOfStock ||
+                                      _quantity >= widget.product.stock
+                                  ? null
                                   : _incrementQuantity,
                             ),
                           ],
@@ -293,15 +299,19 @@ class _ProductDetailPageState extends ConsumerState<ProductDetailPage> {
                     children: [
                       // 1. WISHLIST BUTTON (Square)
                       Container(
-                        height: 50, // Matches height of the cart button for symmetry.
+                        height:
+                            50, // Matches height of the cart button for symmetry.
                         width: 50,
                         decoration: BoxDecoration(
                           borderRadius: BorderRadius.circular(smallPadding),
                           border: Border.all(
-                            color: isFavorite ? Colors.red : Colors.grey.shade400,
+                            color:
+                                isFavorite ? Colors.red : Colors.grey.shade400,
                             width: 1.5,
                           ),
-                          color: isFavorite ? Colors.red.withOpacity(0.1) : Colors.transparent,
+                          color: isFavorite
+                              ? Colors.red.withOpacity(0.1)
+                              : Colors.transparent,
                         ),
                         child: IconButton(
                           icon: Icon(
@@ -311,7 +321,7 @@ class _ProductDetailPageState extends ConsumerState<ProductDetailPage> {
                           onPressed: () => _toggleWishlist(isFavorite),
                         ),
                       ),
-                      
+
                       const SizedBox(width: 16), // Spacing
 
                       // 2. ADD TO CART BUTTON (Expanded)
@@ -322,20 +332,23 @@ class _ProductDetailPageState extends ConsumerState<ProductDetailPage> {
                             onPressed: isOutOfStock ? null : _addToCart,
                             icon: const Icon(Icons.shopping_cart),
                             label: Text(
-                                isOutOfStock 
-                                    ? 'Out of Stock' 
+                                isOutOfStock
+                                    ? 'Out of Stock'
                                     : 'Add to Cart (€${(widget.product.price * _quantity).toStringAsFixed(2)})',
                                 // Use a slightly smaller font to ensure the price fits on smaller screens.
-                                style: const TextStyle(fontSize: 16)), 
+                                style: const TextStyle(fontSize: 16)),
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: isOutOfStock ? Colors.grey : null,
+                              backgroundColor:
+                                  isOutOfStock ? Colors.grey : null,
                             ),
                           ),
                         ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 24), // Extra bottom padding for scrolling comfortable.
+                  const SizedBox(
+                      height:
+                          24), // Extra bottom padding for scrolling comfortable.
                 ],
               ),
             ),

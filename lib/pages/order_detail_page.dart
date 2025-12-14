@@ -34,9 +34,9 @@ class OrderDetailPage extends StatelessWidget {
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: smallPadding),
-            
-            // We use ListView.builder with shrinkWrap because this list is nested 
-            // inside a SingleChildScrollView (Column). Without shrinkWrap, 
+
+            // We use ListView.builder with shrinkWrap because this list is nested
+            // inside a SingleChildScrollView (Column). Without shrinkWrap,
             // the ListView would try to expand infinitely, causing a layout error.
             ListView.builder(
               shrinkWrap: true,
@@ -59,7 +59,7 @@ class OrderDetailPage extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(width: 12),
-                      
+
                       // Product Info
                       Expanded(
                         child: Column(
@@ -67,7 +67,8 @@ class OrderDetailPage extends StatelessWidget {
                           children: [
                             Text(
                               item.product.name,
-                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                              style: const TextStyle(
+                                  fontWeight: FontWeight.bold, fontSize: 16),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                             ),
@@ -78,7 +79,7 @@ class OrderDetailPage extends StatelessWidget {
                           ],
                         ),
                       ),
-                      
+
                       // Line Total
                       Text(
                         '€${(item.quantity * item.product.price).toStringAsFixed(2)}',
@@ -119,9 +120,11 @@ class OrderDetailPage extends StatelessWidget {
                 children: [
                   _buildSummaryRow('Subtotal', order.totalPrice),
                   if (order.giftCardAppliedAmount > 0)
-                    _buildSummaryRow('Discount', -order.giftCardAppliedAmount, color: successColor),
+                    _buildSummaryRow('Discount', -order.giftCardAppliedAmount,
+                        color: successColor),
                   const Divider(),
-                  _buildSummaryRow('Total Paid', order.finalAmountPaid, isTotal: true),
+                  _buildSummaryRow('Total Paid', order.finalAmountPaid,
+                      isTotal: true),
                 ],
               ),
             ),
@@ -157,16 +160,18 @@ class OrderDetailPage extends StatelessWidget {
   }
 
   /// Helper to build a price row in the summary section.
-  Widget _buildSummaryRow(String label, double amount, {bool isTotal = false, Color? color}) {
+  Widget _buildSummaryRow(String label, double amount,
+      {bool isTotal = false, Color? color}) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label, style: TextStyle(
-            fontWeight: isTotal ? FontWeight.bold : FontWeight.normal,
-            fontSize: isTotal ? 18 : 16,
-          )),
+          Text(label,
+              style: TextStyle(
+                fontWeight: isTotal ? FontWeight.bold : FontWeight.normal,
+                fontSize: isTotal ? 18 : 16,
+              )),
           Text(
             '€${amount.toStringAsFixed(2)}',
             style: TextStyle(
@@ -184,11 +189,18 @@ class OrderDetailPage extends StatelessWidget {
   Widget _buildStatusChip(String status) {
     Color color;
     switch (status.toLowerCase()) {
-      case 'pending': color = Colors.orange; break;
+      case 'pending':
+        color = Colors.orange;
+        break;
       case 'shipped':
-      case 'completed': color = successColor; break;
-      case 'cancelled': color = errorColor; break;
-      default: color = Colors.blue;
+      case 'completed':
+        color = successColor;
+        break;
+      case 'cancelled':
+        color = errorColor;
+        break;
+      default:
+        color = Colors.blue;
     }
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -199,7 +211,8 @@ class OrderDetailPage extends StatelessWidget {
       ),
       child: Text(
         status.toUpperCase(),
-        style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.bold),
+        style:
+            TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.bold),
       ),
     );
   }

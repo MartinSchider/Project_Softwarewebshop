@@ -57,7 +57,7 @@ class CustomerAreaPage extends StatelessWidget {
               child: Icon(Icons.person, size: 50, color: Colors.grey),
             ),
             const SizedBox(height: 16),
-            
+
             // Display User Email
             Text(
               user.email ?? 'Customer',
@@ -69,47 +69,52 @@ class CustomerAreaPage extends StatelessWidget {
             // We fetch the full user profile from Firestore to determine if they are an Admin.
             // This is an async operation, so we use FutureBuilder to handle the loading state.
             FutureBuilder<AppUser?>(
-              future: authService.getAppUserProfileOnce(),
-              builder: (context, snapshot) {
-                // Default to false (safe fail) if data is loading or null.
-                final bool isAdmin = snapshot.data?.isAdmin ?? false;
+                future: authService.getAppUserProfileOnce(),
+                builder: (context, snapshot) {
+                  // Default to false (safe fail) if data is loading or null.
+                  final bool isAdmin = snapshot.data?.isAdmin ?? false;
 
-                return GridView.count(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  crossAxisCount: 2,
-                  crossAxisSpacing: defaultPadding,
-                  mainAxisSpacing: defaultPadding,
-                  children: [
-                    _buildMenuButton(
-                      context,
-                      title: 'My Orders',
-                      icon: Icons.receipt_long,
-                      color: Colors.blueAccent,
-                      onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const OrdersPage())),
-                    ),
-                    _buildMenuButton(
-                      context,
-                      title: 'Wishlist',
-                      icon: Icons.favorite_border,
-                      color: Colors.pinkAccent,
-                      onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const WishlistPage())),
-                    ),
-                    
-                    // --- ADMIN BUTTON ---
-                    // Conditionally rendered only for users with the isAdmin flag.
-                    if (isAdmin)
+                  return GridView.count(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    crossAxisCount: 2,
+                    crossAxisSpacing: defaultPadding,
+                    mainAxisSpacing: defaultPadding,
+                    children: [
                       _buildMenuButton(
                         context,
-                        title: 'Admin Panel',
-                        icon: Icons.admin_panel_settings,
-                        color: Colors.black87,
-                        onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AdminDashboardPage())),
+                        title: 'My Orders',
+                        icon: Icons.receipt_long,
+                        color: Colors.blueAccent,
+                        onTap: () => Navigator.of(context).push(
+                            MaterialPageRoute(
+                                builder: (_) => const OrdersPage())),
                       ),
-                  ],
-                );
-              }
-            ),
+                      _buildMenuButton(
+                        context,
+                        title: 'Wishlist',
+                        icon: Icons.favorite_border,
+                        color: Colors.pinkAccent,
+                        onTap: () => Navigator.of(context).push(
+                            MaterialPageRoute(
+                                builder: (_) => const WishlistPage())),
+                      ),
+
+                      // --- ADMIN BUTTON ---
+                      // Conditionally rendered only for users with the isAdmin flag.
+                      if (isAdmin)
+                        _buildMenuButton(
+                          context,
+                          title: 'Admin Panel',
+                          icon: Icons.admin_panel_settings,
+                          color: Colors.black87,
+                          onTap: () => Navigator.of(context).push(
+                              MaterialPageRoute(
+                                  builder: (_) => const AdminDashboardPage())),
+                        ),
+                    ],
+                  );
+                }),
           ],
         ),
       ),
@@ -117,11 +122,15 @@ class CustomerAreaPage extends StatelessWidget {
   }
 
   /// Helper to build consistent dashboard menu cards.
-  Widget _buildMenuButton(BuildContext context, 
-      {required String title, required IconData icon, required Color color, required VoidCallback onTap}) {
+  Widget _buildMenuButton(BuildContext context,
+      {required String title,
+      required IconData icon,
+      required Color color,
+      required VoidCallback onTap}) {
     return Card(
       elevation: 4,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(borderRadius)),
+      shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(borderRadius)),
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(borderRadius),
@@ -130,11 +139,14 @@ class CustomerAreaPage extends StatelessWidget {
           children: [
             Container(
               padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(color: color.withOpacity(0.1), shape: BoxShape.circle),
+              decoration: BoxDecoration(
+                  color: color.withOpacity(0.1), shape: BoxShape.circle),
               child: Icon(icon, size: 40, color: color),
             ),
             const SizedBox(height: 16),
-            Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            Text(title,
+                style:
+                    const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
           ],
         ),
       ),

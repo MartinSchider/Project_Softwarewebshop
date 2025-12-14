@@ -8,7 +8,7 @@ import 'package:webshop/services/auth_service.dart';
 import 'package:webshop/utils/constants.dart';
 import 'package:webshop/cart_page.dart';
 import 'package:webshop/auth_page.dart';
-import 'package:webshop/pages/customer_area_page.dart'; 
+import 'package:webshop/pages/customer_area_page.dart';
 import 'package:webshop/providers/cart_providers.dart';
 import 'package:webshop/providers/products_provider.dart';
 import 'package:webshop/widgets/error_retry_widget.dart';
@@ -87,7 +87,7 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
     final cartItemsAsync = ref.watch(cartItemsProvider);
     // Watch the product state to render the grid.
     final productsState = ref.watch(productsProvider);
-    
+
     final int cartItemCount = _calculateCartItemCount(cartItemsAsync);
 
     return Scaffold(
@@ -102,7 +102,8 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
                 _buildCategoryFilterBar(context),
                 Expanded(
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: smallPadding),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: smallPadding),
                     child: _buildBody(productsState),
                   ),
                 ),
@@ -123,7 +124,8 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
   int _calculateCartItemCount(AsyncValue<List<dynamic>> cartItemsAsync) {
     return cartItemsAsync.when(
       data: (items) => items
-          .fold<num>(0, (previousValue, element) => previousValue + element.quantity)
+          .fold<num>(
+              0, (previousValue, element) => previousValue + element.quantity)
           .toInt(),
       loading: () => 0,
       error: (err, stack) => 0,
@@ -150,12 +152,13 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
               );
             } else {
               Navigator.of(context).push(
-                MaterialPageRoute(builder: (context) => const CustomerAreaPage()),
+                MaterialPageRoute(
+                    builder: (context) => const CustomerAreaPage()),
               );
             }
           },
         ),
-        
+
         _buildCartButton(context, cartItemCount),
       ],
     );
@@ -321,8 +324,9 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
   /// 4. Data Grid (with pull-to-refresh).
   Widget _buildBody(ProductsState state) {
     // 1. Initial Load
-    if (state.isLoading) return const Center(child: CircularProgressIndicator());
-    
+    if (state.isLoading)
+      return const Center(child: CircularProgressIndicator());
+
     // 2. Error State
     if (state.errorMessage != null && state.products.isEmpty) {
       return ErrorRetryWidget(
@@ -330,10 +334,10 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
         onRetry: () => ref.read(productsProvider.notifier).refresh(),
       );
     }
-    
+
     // Apply local filters (Search/Category)
     final displayProducts = _filterProducts(state.products);
-    
+
     // 3. Empty State
     if (displayProducts.isEmpty) {
       return Center(
@@ -350,7 +354,7 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
         ),
       );
     }
-    
+
     // 4. Data Grid
     return RefreshIndicator(
       onRefresh: () async {

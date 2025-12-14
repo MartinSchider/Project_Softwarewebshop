@@ -31,11 +31,11 @@ class ProductCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final cartService = ref.read(cartServiceProvider);
-    
+
     // --- Wishlist State ---
     final wishlistIdsAsync = ref.watch(wishlistIdsProvider);
     final wishlistController = ref.read(wishlistControllerProvider);
-    
+
     // Check if the current product ID exists in the list of user favorites
     // to determine the state of the heart icon.
     final bool isFavorite = wishlistIdsAsync.maybeWhen(
@@ -58,7 +58,8 @@ class ProductCard extends ConsumerWidget {
     Future<void> _toggleWishlist() async {
       if (FirebaseAuth.instance.currentUser == null) {
         // Redirect anonymous users to the auth page to secure the data.
-        Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AuthPage()));
+        Navigator.of(context)
+            .push(MaterialPageRoute(builder: (_) => const AuthPage()));
         return;
       }
       try {
@@ -79,11 +80,12 @@ class ProductCard extends ConsumerWidget {
     /// in the database structure.
     void _attemptAddToCart() async {
       if (FirebaseAuth.instance.currentUser == null) {
-        await Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AuthPage()));
+        await Navigator.of(context)
+            .push(MaterialPageRoute(builder: (_) => const AuthPage()));
         // If user cancelled login, abort operation.
         if (FirebaseAuth.instance.currentUser == null) return;
       }
-      
+
       try {
         await cartService.addProductToCart(product, 1);
         if (context.mounted) UiHelper.showSuccess(context, 'Added to cart');
@@ -93,9 +95,10 @@ class ProductCard extends ConsumerWidget {
     }
 
     return Card(
-      elevation: 2, 
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(borderRadius)),
-      margin: const EdgeInsets.all(4), 
+      elevation: 2,
+      shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(borderRadius)),
+      margin: const EdgeInsets.all(4),
       clipBehavior: Clip.antiAlias,
       color: Colors.white, // Clean white background for better image contrast
       child: InkWell(
@@ -115,7 +118,7 @@ class ProductCard extends ConsumerWidget {
                 children: [
                   // Product Image
                   Padding(
-                    padding: const EdgeInsets.all(12.0), 
+                    padding: const EdgeInsets.all(12.0),
                     child: SizedBox(
                       width: double.infinity,
                       height: double.infinity,
@@ -123,7 +126,7 @@ class ProductCard extends ConsumerWidget {
                         imageUrl: product.imageUrl,
                         // Use 'contain' to ensure the entire product is visible.
                         // 'cover' might crop essential details (e.g., shoe shape, bottle branding).
-                        fit: BoxFit.contain, 
+                        fit: BoxFit.contain,
                       ),
                     ),
                   ),
@@ -137,16 +140,20 @@ class ProductCard extends ConsumerWidget {
                         color: Colors.white.withOpacity(0.95),
                         shape: BoxShape.circle,
                         boxShadow: const [
-                          BoxShadow(color: Colors.black12, blurRadius: 4, spreadRadius: 1)
+                          BoxShadow(
+                              color: Colors.black12,
+                              blurRadius: 4,
+                              spreadRadius: 1)
                         ],
                       ),
                       child: IconButton(
                         icon: Icon(
                           isFavorite ? Icons.favorite : Icons.favorite_border,
-                          size: 18, 
+                          size: 18,
                         ),
                         color: isFavorite ? Colors.red : Colors.grey,
-                        constraints: const BoxConstraints.tightFor(width: 32, height: 32),
+                        constraints: const BoxConstraints.tightFor(
+                            width: 32, height: 32),
                         padding: EdgeInsets.zero,
                         onPressed: _toggleWishlist,
                       ),
@@ -189,14 +196,14 @@ class ProductCard extends ConsumerWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
-                  
+
                   const SizedBox(height: 2),
 
                   // Product Name
                   Text(
                     product.name,
                     style: const TextStyle(
-                      fontSize: 14, 
+                      fontSize: 14,
                       fontWeight: FontWeight.w600,
                       height: 1.2,
                     ),
@@ -226,7 +233,9 @@ class ProductCard extends ConsumerWidget {
                         height: 32,
                         child: Material(
                           // Grey out button if out of stock to indicate non-interactivity
-                          color: isOutOfStock ? Colors.grey[300] : Theme.of(context).primaryColor,
+                          color: isOutOfStock
+                              ? Colors.grey[300]
+                              : Theme.of(context).primaryColor,
                           shape: const CircleBorder(),
                           elevation: 2,
                           child: InkWell(

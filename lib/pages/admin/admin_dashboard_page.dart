@@ -40,7 +40,8 @@ class AdminDashboardPage extends ConsumerWidget {
                 child: const Text('Cancel')),
             TextButton(
                 onPressed: () => Navigator.pop(ctx, true),
-                child: const Text('Delete', style: TextStyle(color: Colors.red))),
+                child:
+                    const Text('Delete', style: TextStyle(color: Colors.red))),
           ],
         ),
       );

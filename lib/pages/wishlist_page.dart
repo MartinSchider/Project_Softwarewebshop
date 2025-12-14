@@ -18,14 +18,14 @@ class WishlistPage extends ConsumerWidget {
     // 1. Fetch Wishlist IDs
     // We watch the list of IDs from Firestore (user-specific).
     final wishlistIdsAsync = ref.watch(wishlistIdsProvider);
-    
+
     // 2. Fetch All Products
     // We access the global product state to retrieve full product details (name, price, image)
-    // corresponding to the IDs. 
+    // corresponding to the IDs.
     //
-    // Trade-off: In a production app with thousands of products, this "filter client-side" 
-    // approach isn't scalable. We would typically use a `whereIn` Firestore query to fetch 
-    // only specific items. However, since our architecture uses a paginated list for the 
+    // Trade-off: In a production app with thousands of products, this "filter client-side"
+    // approach isn't scalable. We would typically use a `whereIn` Firestore query to fetch
+    // only specific items. However, since our architecture uses a paginated list for the
     // home screen, we reuse that data here for simplicity and cache efficiency.
     final productsState = ref.watch(productsProvider);
 
@@ -40,19 +40,20 @@ class WishlistPage extends ConsumerWidget {
           }
 
           // Filter the products currently loaded in memory to find matches.
-          final wishlistProducts = productsState.products
-              .where((p) => ids.contains(p.id))
-              .toList();
+          final wishlistProducts =
+              productsState.products.where((p) => ids.contains(p.id)).toList();
 
-          // Edge Case: 
-          // If a user favorites an item on page 10, then restarts the app, 
-          // 'productsState' might only have page 1 loaded. The favorite ID exists, 
+          // Edge Case:
+          // If a user favorites an item on page 10, then restarts the app,
+          // 'productsState' might only have page 1 loaded. The favorite ID exists,
           // but the product data isn't in memory yet.
           //
-          // For now, we show a helpful message. A robust fix would be to 
+          // For now, we show a helpful message. A robust fix would be to
           // fetch missing products by ID explicitly.
           if (wishlistProducts.isEmpty) {
-             return const Center(child: Text('Loading wishlist items... (Try scrolling the home page to load more products)'));
+            return const Center(
+                child: Text(
+                    'Loading wishlist items... (Try scrolling the home page to load more products)'));
           }
 
           return GridView.builder(
