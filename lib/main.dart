@@ -8,32 +8,32 @@ import 'package:webshop/utils/constants.dart';
 
 /// The application entry point.
 ///
-/// This function is responsible for:
-/// 1. Initializing the Flutter framework bindings.
-/// 2. Setting up the Firebase backend connection using platform-specific options.
-/// 3. Wrapping the entire application in a [ProviderScope] to enable Riverpod state management.
+/// This asynchronous function is responsible for the critical setup phase before the UI renders:
+/// 1. **Binding Initialization**: Ensures the Flutter engine is fully loaded to handle platform channels.
+/// 2. **Firebase Setup**: Initializes the connection to backend services (Firestore, Auth, etc.) using platform-specific configuration.
+/// 3. **State Management**: Wraps the entire application tree in a [ProviderScope], which stores the state of all Riverpod providers.
 void main() async {
-  // Ensure Flutter engine is ready before making async calls.
+  // 1. Ensure Flutter engine is ready before making async calls to native plugins.
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Initialize connection to Firebase (Firestore, Auth, Functions).
+  // 2. Initialize connection to Firebase.
+  // 'DefaultFirebaseOptions.currentPlatform' ensures the correct keys are used for Android/iOS/Web.
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
 
-  // We removed the offline persistence block here to prevent conflicts on some platforms.
-  // The app will function correctly using standard network fetching.
+  // Note: Offline persistence is disabled here to prevent platform-specific conflicts
+  // during development. The app relies on standard network fetching.
 
-  // Launch the app wrapped in Riverpod's scope.
+  // 3. Launch the app wrapped in Riverpod's scope.
   runApp(const ProviderScope(child: MyApp()));
 }
 
 /// The root widget of the application.
 ///
-/// This widget defines the global [MaterialApp] configuration, including:
-/// - The application title.
-/// - The global theme (colors, fonts, input styles) to ensure design consistency.
-/// - The home route ([ProductsScreen]).
+/// This widget defines the global [MaterialApp] configuration, acting as the foundation for:
+/// * **Navigation**: Sets the home route to [ProductsScreen].
+/// * **Branding**: Applies a centralized [ThemeData] to ensure consistent colors, shapes, and inputs across all screens.
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
@@ -47,12 +47,15 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       title: appName,
 
-      // Hides the "DEBUG" banner in the top-right corner during development.
+      // Hides the "DEBUG" banner in the top-right corner for a cleaner look during development.
       debugShowCheckedModeBanner: false,
 
-      // --- GLOBAL THEME CONFIGURATION ---
+      // ==================================================================
+      // GLOBAL THEME CONFIGURATION
+      // ==================================================================
       theme: ThemeData(
-        // Color Scheme: Automatically generates a palette based on the primary seed color.
+        // 1. Color Scheme:
+        // Automatically generates a accessible palette based on the primary seed color.
         colorScheme: ColorScheme.fromSeed(
           seedColor: primaryColor,
         ).copyWith(
@@ -65,16 +68,19 @@ class MyApp extends StatelessWidget {
           onError: whiteColor,
         ),
 
+        // Background color for Screens (Scaffolds)
         scaffoldBackgroundColor: scaffoldBackgroundColor,
 
-        // AppBar Theme: Consistent header styling across all pages.
+        // 2. AppBar Theme:
+        // Ensures all headers look consistent (primary color background, white text).
         appBarTheme: const AppBarTheme(
           backgroundColor: primaryColor,
           foregroundColor: whiteColor,
           elevation: cardElevation,
         ),
 
-        // Button Theme: Standardized shapes and colors for primary actions.
+        // 3. Button Theme:
+        // Standardizes shapes (rounded corners) and colors for primary actions.
         elevatedButtonTheme: ElevatedButtonThemeData(
           style: ElevatedButton.styleFrom(
             backgroundColor: primaryColor,
@@ -89,7 +95,8 @@ class MyApp extends StatelessWidget {
           ),
         ),
 
-        // Text Button Theme: Standardized link/secondary action styling.
+        // 4. Text Button Theme:
+        // Standardizes link/secondary action styling.
         textButtonTheme: TextButtonThemeData(
           style: TextButton.styleFrom(
             foregroundColor: primaryColor,
@@ -97,7 +104,8 @@ class MyApp extends StatelessWidget {
           ),
         ),
 
-        // Card Theme: Consistent shadows and rounded corners for content containers.
+        // 5. Card Theme:
+        // Consistent shadows and rounded corners for content containers (Product Cards, etc.).
         cardTheme: CardTheme.of(context).copyWith(
           elevation: cardElevation,
           shape: RoundedRectangleBorder(
@@ -107,7 +115,8 @@ class MyApp extends StatelessWidget {
               horizontal: smallPadding, vertical: smallPadding / 2),
         ),
 
-        // Input Theme: Consistent text field borders and focus states.
+        // 6. Input Theme:
+        // Consistent text field borders (rounded) and focus states for forms (Login, Checkout).
         inputDecorationTheme: InputDecorationTheme(
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(smallPadding),
@@ -119,11 +128,15 @@ class MyApp extends StatelessWidget {
           labelStyle: const TextStyle(color: primaryColor),
         ),
 
+        // Adapts visual density for desktop/mobile platforms.
         visualDensity: VisualDensity.adaptivePlatformDensity,
       ),
 
+      // ==================================================================
+      // ROUTING
+      // ==================================================================
       // Starts the user on the Product Catalog screen.
-      // Authentication is handled lazily when the user attempts an action (e.g., Add to Cart).
+      // Authentication is handled lazily when the user attempts a protected action (e.g., Add to Cart).
       home: const ProductsScreen(),
     );
   }

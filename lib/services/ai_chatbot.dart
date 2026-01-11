@@ -1,85 +1,96 @@
 // lib/services/ai_chatbot.dart
 import 'package:webshop/models/product.dart';
+import 'chatbot/chat_intent.dart';
+import 'chatbot/intent_classifier.dart';
+import 'chatbot/intent_handler_registry.dart';
+import 'chatbot/conversation_context.dart';
 
 /// A service that powers the AI Shopping Assistant.
 ///
 /// This class handles the natural language processing (NLP) logic to understand
 /// user queries and generate appropriate responses based on the available [Product] list.
+///
+/// **Implementation:** Uses Intent Classification with Registry Pattern.
+/// Each user query is first classified into an intent, then routed to the
+/// appropriate handler via the IntentHandlerRegistry.
+///
+/// **Architecture:**
+/// - Intent Classification: Determines what the user wants
+/// - Intent Handler Registry: Routes intents to handlers (replaces switch statement)
+/// - Intent Handlers: Generate appropriate responses
+/// - Product Extraction: Finds relevant products in queries
+/// - Conversation Context: Tracks history for context-aware responses
+/// - Response Formatter: Standardizes response formatting
+///
+/// **Note:** In a production environment, this would likely use a real NLP service
+/// (like OpenAI, Gemini, or Dialogflow) for more sophisticated understanding.
 class AIChatbotService {
-  
-  /// Generates a response to a user's [query].
+  /// Conversation context for tracking history and state.
+  final ConversationContext context;
+
+  /// Creates a new chatbot service instance.
+  ///
+  /// [context] can be provided to continue an existing conversation,
+  /// or a new context will be created automatically.
+  AIChatbotService({ConversationContext? context})
+      : context = context ?? ConversationContext();
+
+  /// Generates a response to the user's query using Intent Classification.
+  ///
+  /// This is the main public method of the service. It processes the user's [query]
+  /// in four steps:
+  /// 1. **Add to History**: Stores the user's message in conversation context
+  /// 2. **Intent Classification**: Determines what the user wants to achieve
+  /// 3. **Intent Handling**: Routes to handler via registry (no switch statement)
+  /// 4. **Store Response**: Adds bot response to conversation history
+  ///
+  /// * [query]: The raw text input from the chat widget.
+  /// * [products]: The list of currently loaded products to search within.
+  ///
+  /// Returns a [Future<String>] to simulate network latency, making the
+  /// chat experience feel more realistic.
   Future<String> respond(String query, List<Product> products) async {
+    // Step 1: Add user message to conversation history
+    context.addUserMessage(query);
+
     // UX: Simulate a small network delay ("typing" effect)
     await Future.delayed(const Duration(milliseconds: 800));
 
-    final lowerQuery = query.toLowerCase();
+    // Step 2: Classify the user's intent with context awareness
+    final intent = IntentClassifier.classifyIntent(query, context: context);
 
-    // --- SCENARIO 1: Availability / Stock Check ---
-    if (lowerQuery.contains('available') || lowerQuery.contains('stock') || lowerQuery.contains('have')) {
-      // Find the first product whose name matches the query
-      final foundProduct = products.firstWhere(
-        (p) => lowerQuery.contains(p.name.toLowerCase()),
-        // Fallback object to avoid exception if not found
-        // FIX: Added required 'category' parameter
-        orElse: () => const Product(
-          id: '', 
-          name: '', 
-          description: '', 
-          price: 0, 
-          imageUrl: '', 
-          stock: -1,
-          category: 'General', // <--- FIX HERE
-        ),
-      );
+    // Store intent in context for future reference
+    context.setLastIntent(intent);
 
-      // If we found a valid product (stock != -1)
-      if (foundProduct.stock != -1) {
-        if (foundProduct.stock > 0) {
-          return 'Yes, we have ${foundProduct.stock} units of ${foundProduct.name} in stock.';
-        } else {
-          return 'Sorry, ${foundProduct.name} is currently out of stock.';
-        }
-      }
-      return 'We have many products in stock! Which one are you looking for?';
-    }
+    // Step 3: Route to appropriate handler via registry
+    final response = IntentHandlerRegistry.handle(
+      intent,
+      query,
+      products,
+      context: context,
+    );
 
-    // --- SCENARIO 2: Price Check ---
-    if (lowerQuery.contains('price') || lowerQuery.contains('cost') || lowerQuery.contains('much')) {
-      final foundProduct = products.firstWhere(
-        (p) => lowerQuery.contains(p.name.toLowerCase()),
-        // FIX: Added required 'category' parameter
-        orElse: () => const Product(
-          id: '', 
-          name: '', 
-          description: '', 
-          price: 0, 
-          imageUrl: '', 
-          stock: -1,
-          category: 'General', // <--- FIX HERE
-        ),
-      );
+    // Step 4: Add bot response to conversation history
+    context.addBotMessage(response);
 
-      if (foundProduct.stock != -1) {
-        return 'The price for ${foundProduct.name} is €${foundProduct.price.toStringAsFixed(2)}.';
-      }
-    }
-
-    // --- SCENARIO 3: General Product Search ---
-    final matchingProducts = products.where((p) => 
-      lowerQuery.contains(p.name.toLowerCase()) || 
-      p.description.toLowerCase().contains(lowerQuery)
-    ).toList();
-
-    if (matchingProducts.isNotEmpty) {
-      if (matchingProducts.length == 1) {
-        return 'I found ${matchingProducts.first.name} for €${matchingProducts.first.price.toStringAsFixed(2)}. Would you like to add it to your cart?';
-      } else {
-        final names = matchingProducts.map((p) => p.name).take(3).join(', ');
-        return 'I found a few items that match: $names. Can you be more specific?';
-      }
-    }
-
-    // --- DEFAULT FALLBACK ---
-    return 'I can help you find products, check prices, or view stock availability. Try asking "How much is the iPhone?" or "Do you have laptops?"';
+    return response;
   }
+
+  /// Clears the conversation history.
+  void clearHistory() {
+    context.clear();
+  }
+
+  /// Gets the conversation history.
+  List<Map<String, String>> getHistory() {
+    return context.history
+        .map((msg) => {'sender': msg.sender, 'text': msg.text})
+        .toList();
+  }
+
+  /// Gets the number of messages in the conversation.
+  int get messageCount => context.messageCount;
+
+  /// Checks if there's any conversation history.
+  bool get hasHistory => !context.isEmpty;
 }

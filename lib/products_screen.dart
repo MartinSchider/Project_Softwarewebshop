@@ -8,19 +8,18 @@ import 'package:webshop/services/auth_service.dart';
 import 'package:webshop/utils/constants.dart';
 import 'package:webshop/cart_page.dart';
 import 'package:webshop/auth_page.dart';
-import 'package:webshop/pages/customer_area_page.dart'; 
+import 'package:webshop/pages/customer_area_page.dart';
 import 'package:webshop/providers/cart_providers.dart';
 import 'package:webshop/providers/products_provider.dart';
 import 'package:webshop/widgets/error_retry_widget.dart';
 
 /// The main catalog screen of the application.
 ///
-/// This widget displays the grid of products and serves as the primary navigation hub.
-/// It features:
-/// * Infinite scrolling for product pagination.
-/// * Local filtering by category and search query.
-/// * Real-time cart badge updates.
-/// * A collapsible AI Chat panel.
+/// This widget displays a grid of products with search and category filtering capabilities.
+/// It features a responsive layout that includes:
+/// * **Main Content Area:** A grid of [ProductCard] widgets.
+/// * **Sidebar (ChatPanel):** An optional, animated side panel for the AI Assistant.
+/// * **Navigation Bar:** Custom AppBar with search, profile, and cart actions.
 class ProductsScreen extends ConsumerStatefulWidget {
   const ProductsScreen({super.key});
 
@@ -29,20 +28,22 @@ class ProductsScreen extends ConsumerStatefulWidget {
 }
 
 class _ProductsScreenState extends ConsumerState<ProductsScreen> {
-  // Local state for UI filters.
+  // --- UI STATE VARIABLES ---
   String _query = '';
   String _selectedCategory = 'All';
   bool _isChatVisible = false;
   bool _isSearching = false;
 
   final AuthService _authService = AuthService();
+  
+  // Controllers for input handling and scrolling.
   final TextEditingController _searchController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
 
   @override
   void initState() {
     super.initState();
-    // Attach listener to detect when the user scrolls to the bottom.
+    // Attach listener for infinite scrolling logic.
     _scrollController.addListener(_onScroll);
   }
 
@@ -53,10 +54,10 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
     super.dispose();
   }
 
-  /// Triggered by the ScrollController to handle infinite scrolling.
+  /// Handles scroll events to trigger pagination.
   ///
-  /// We check if the user is within 200 pixels of the bottom of the list.
-  /// If so, we request the provider to fetch the next page of data.
+  /// When the user scrolls near the bottom of the list (within 200 pixels),
+  /// this method requests the next batch of products from the provider.
   void _onScroll() {
     if (_scrollController.position.pixels >=
         _scrollController.position.maxScrollExtent - 200) {
@@ -64,38 +65,44 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
     }
   }
 
-  /// Filters the currently loaded products based on search text and category.
+  /// Filters the list of products based on the current search query and category.
   ///
-  /// **Note:** This performs client-side filtering on the *loaded* data.
-  /// In a production scenario with millions of items, this should ideally
-  /// be replaced by a server-side query.
+  /// * [allProducts]: The complete list of loaded products.
+  /// * Returns: A filtered sub-list matching the criteria.
   List<Product> _filterProducts(List<Product> allProducts) {
     return allProducts.where((p) {
       final q = _query.trim().toLowerCase();
+      
+      // Match against name or description
       final matchesQuery = q.isEmpty ||
           p.name.toLowerCase().contains(q) ||
           p.description.toLowerCase().contains(q);
+      
+      // Match against selected category (or 'All')
       final matchesCategory =
           _selectedCategory == 'All' || p.category == _selectedCategory;
+      
       return matchesQuery && matchesCategory;
     }).toList();
   }
 
   @override
   Widget build(BuildContext context) {
-    // Watch the cart stream to update the badge count in real-time.
+    // Watch providers for reactive updates.
     final cartItemsAsync = ref.watch(cartItemsProvider);
-    // Watch the product state to render the grid.
     final productsState = ref.watch(productsProvider);
     
+    // Calculate total items in cart for the badge.
     final int cartItemCount = _calculateCartItemCount(cartItemsAsync);
 
     return Scaffold(
       appBar: _buildAppBar(context, cartItemCount),
       floatingActionButton: _buildFloatingActionButton(context),
+      
+      // Main Body Layout: Uses a Row to support the side-by-side Chat Panel.
       body: Row(
         children: [
-          // Main Content Area (Filters + Grid)
+          // Expanded area for the Product Grid (takes up remaining space)
           Expanded(
             child: Column(
               children: [
@@ -109,17 +116,15 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
               ],
             ),
           ),
-          // Side Panel for AI Chat (Sliding animation)
+          
+          // Collapsible Chat Panel on the right side
           _buildChatPanel(context, productsState),
         ],
       ),
     );
   }
 
-  /// Safely calculates total items from the AsyncValue.
-  ///
-  /// We use `fold` to sum quantities across all unique cart items.
-  /// Returns 0 if data is loading or errored to prevent UI glitches.
+  /// Helper to calculate the total quantity of items in the cart safely.
   int _calculateCartItemCount(AsyncValue<List<dynamic>> cartItemsAsync) {
     return cartItemsAsync.when(
       data: (items) => items
@@ -130,20 +135,18 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
     );
   }
 
+  /// Builds the custom application bar.
   PreferredSizeWidget _buildAppBar(BuildContext context, int cartItemCount) {
     return AppBar(
       title: _buildAppBarTitle(),
       actions: [
         _buildSearchToggleButton(),
-
-        // --- Profile Icon ---
+        
+        // Personal Area / Profile Button
         IconButton(
           icon: const Icon(Icons.person),
           tooltip: 'Personal Area',
           onPressed: () {
-            // Intelligent routing:
-            // If logged in -> Go to Dashboard.
-            // If anonymous -> Go to Login/Register.
             if (_authService.currentUser == null) {
               Navigator.of(context).push(
                 MaterialPageRoute(builder: (context) => const AuthPage()),
@@ -156,12 +159,13 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
           },
         ),
         
+        // Shopping Cart Button with Badge
         _buildCartButton(context, cartItemCount),
       ],
     );
   }
 
-  /// Toggles between the app name and the search text field.
+  /// Dynamic AppBar title: toggles between Logo and Search Field.
   Widget _buildAppBarTitle() {
     if (_isSearching) {
       return TextField(
@@ -180,13 +184,25 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
           ),
         ),
         style: const TextStyle(color: whiteColor),
-        // Live search: Update query as user types.
         onChanged: (v) => setState(() => _query = v),
       );
     }
-    return const Text(appName);
+    return Row(
+      children: [
+        Image.asset(
+          'assets/images/logo.png',
+          height: 32,
+          fit: BoxFit.contain,
+          errorBuilder: (context, error, stackTrace) {
+            // Fallback text if logo fails to load
+            return const Text(appName, style: TextStyle(fontWeight: FontWeight.bold));
+          },
+        ),
+      ],
+    );
   }
 
+  /// Toggle button to switch between search mode and normal mode.
   Widget _buildSearchToggleButton() {
     if (!_isSearching) {
       return IconButton(
@@ -206,7 +222,7 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
     );
   }
 
-  /// Builds the cart icon with a badge overlay.
+  /// Cart icon with a red badge counter.
   Widget _buildCartButton(BuildContext context, int cartItemCount) {
     return Stack(
       children: [
@@ -218,7 +234,6 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
             );
           },
         ),
-        // Only show badge if there are items.
         if (cartItemCount > 0)
           Positioned(
             right: 5,
@@ -241,6 +256,7 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
     );
   }
 
+  /// Horizontal scrollable list for selecting product categories.
   Widget _buildCategoryFilterBar(BuildContext context) {
     return Container(
       height: 60,
@@ -263,7 +279,7 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
             },
             selectedColor: Theme.of(context).primaryColor.withOpacity(0.2),
             labelStyle: TextStyle(
-              color: isSelected ? Theme.of(context).primaryColor : Colors.black,
+              color: isSelected ? Theme.of(context).primaryColor : blackColor,
               fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
             ),
           );
@@ -272,7 +288,7 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
     );
   }
 
-  /// Hides the FAB when the chat panel is open to avoid visual clutter.
+  /// FAB to open the Chat Assistant (hidden if already open).
   Widget? _buildFloatingActionButton(BuildContext context) {
     if (_isChatVisible) return null;
     return FloatingActionButton.extended(
@@ -282,14 +298,11 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
     );
   }
 
-  /// Renders the AI Chat sidebar with a sliding transition.
-  ///
-  /// We pass the current [productsState] to the chat so the AI knows about
-  /// the products currently visible/loaded context.
+  /// The sliding side panel for the AI Chatbot.
   Widget _buildChatPanel(BuildContext context, ProductsState productsState) {
     return AnimatedContainer(
       duration: animationDuration,
-      width: _isChatVisible ? chatPanelWidth : 0,
+      width: _isChatVisible ? chatPanelWidth : 0, // Animate width
       child: ClipRect(
         child: OverflowBox(
           alignment: Alignment.topLeft,
@@ -312,63 +325,59 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
     );
   }
 
-  /// Builds the main grid based on the provider state.
-  ///
-  /// Handles:
-  /// 1. Initial Loading Spinner.
-  /// 2. Error State (with retry).
-  /// 3. Empty State (no search results).
-  /// 4. Data Grid (with pull-to-refresh).
+  /// Builds the main content area (Error, Loading, Empty, or Grid).
   Widget _buildBody(ProductsState state) {
-    // 1. Initial Load
-    if (state.isLoading) return const Center(child: CircularProgressIndicator());
-    
-    // 2. Error State
+    // 1. Loading State
+    if (state.isLoading)
+      return const Center(child: CircularProgressIndicator());
+
+    // 2. Error State (with empty list)
     if (state.errorMessage != null && state.products.isEmpty) {
       return ErrorRetryWidget(
         errorMessage: state.errorMessage!,
         onRetry: () => ref.read(productsProvider.notifier).refresh(),
       );
     }
-    
-    // Apply local filters (Search/Category)
+
+    // Apply local filters (search query & category)
     final displayProducts = _filterProducts(state.products);
-    
-    // 3. Empty State
+
+    // 3. Empty State (No results found)
     if (displayProducts.isEmpty) {
-      return Center(
+      return const Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.search_off, size: 64, color: Colors.grey),
-            const SizedBox(height: 16),
+            Icon(Icons.search_off, size: 64, color: Colors.grey),
+            SizedBox(height: 16),
             Text(
-              'No products found for "$_selectedCategory".',
-              style: const TextStyle(fontSize: 16, color: Colors.grey),
+              'No products found.',
+              style: TextStyle(fontSize: 16, color: Colors.grey),
             ),
           ],
         ),
       );
     }
-    
-    // 4. Data Grid
+
+    // 4. Data State (Product Grid)
     return RefreshIndicator(
       onRefresh: () async {
         await ref.read(productsProvider.notifier).refresh();
       },
       child: GridView.builder(
         controller: _scrollController,
-        // AlwaysScrollable ensures Pull-to-Refresh works even if list is short.
         physics: const AlwaysScrollableScrollPhysics(),
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 2,
-          childAspectRatio: 0.70,
+        // Responsive Grid Layout matching other screens
+        gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+          maxCrossAxisExtent: 280, 
+          childAspectRatio: 0.60, 
           crossAxisSpacing: smallPadding,
           mainAxisSpacing: smallPadding,
         ),
-        // Add extra slot for the bottom loading spinner if fetching more pages.
+        // Add extra items for loading indicators at the bottom
         itemCount: displayProducts.length + (state.isLoadingMore ? 2 : 0),
         itemBuilder: (context, index) {
+          // Show loading spinner at the bottom when fetching more pages
           if (index >= displayProducts.length) {
             return const Center(
                 child: Padding(

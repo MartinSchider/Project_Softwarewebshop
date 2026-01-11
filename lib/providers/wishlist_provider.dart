@@ -19,11 +19,11 @@ final wishlistRepositoryProvider = Provider<WishlistRepository>((ref) {
 /// Returns an empty list if the user is not authenticated.
 final wishlistIdsProvider = StreamProvider<List<String>>((ref) {
   final user = FirebaseAuth.instance.currentUser;
-  
+
   // Security/Logic Check: We cannot fetch a wishlist without a User ID.
   // Returning an empty stream is safer than throwing an error here.
   if (user == null) return Stream.value([]);
-  
+
   final repo = ref.watch(wishlistRepositoryProvider);
   return repo.getWishlistIdsStream(user.uid);
 });
@@ -33,7 +33,7 @@ final wishlistIdsProvider = StreamProvider<List<String>>((ref) {
 /// It separates the business logic of modifying data from the UI code.
 class WishlistController {
   final WishlistRepository _repo;
-  
+
   WishlistController(this._repo);
 
   /// Placeholder for a server-side toggle (currently unused).

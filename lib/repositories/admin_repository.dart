@@ -34,15 +34,16 @@ class AdminRepository {
   Future<void> deleteProduct(String productId) async {
     await _firestore.collection('products').doc(productId).delete();
   }
-  
+
   // --- Order Management ---
-  
+
   /// Returns a real-time stream of ALL orders from all users.
   ///
   /// The stream is sorted by timestamp (descending) to ensure the administrator
   /// sees the most recent orders at the top of the list for quick processing.
   Stream<List<app_model.Order>> getAllOrdersStream() {
-    return _firestore.collection('orders')
+    return _firestore
+        .collection('orders')
         .orderBy('timestamp', descending: true)
         .snapshots()
         .map((snapshot) => snapshot.docs

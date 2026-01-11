@@ -46,7 +46,7 @@ class OrdersPage extends StatelessWidget {
           if (snapshot.hasError) {
             return ErrorRetryWidget(
               errorMessage: 'Error loading orders: ${snapshot.error}',
-              onRetry: () {}, 
+              onRetry: () {},
             );
           }
 
@@ -56,7 +56,8 @@ class OrdersPage extends StatelessWidget {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.shopping_bag_outlined, size: 80, color: Colors.grey),
+                  Icon(Icons.shopping_bag_outlined,
+                      size: 80, color: Colors.grey),
                   SizedBox(height: 16),
                   Text('No orders placed yet.', style: TextStyle(fontSize: 18)),
                 ],
@@ -78,13 +79,16 @@ class OrdersPage extends StatelessWidget {
               return Card(
                 margin: const EdgeInsets.only(bottom: smallPadding),
                 elevation: 2,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(borderRadius)),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(borderRadius)),
                 child: ListTile(
                   contentPadding: const EdgeInsets.all(mediumPadding),
                   // Leading icon to quickly identify the list item type.
                   leading: CircleAvatar(
-                    backgroundColor: Theme.of(context).primaryColor.withOpacity(0.1),
-                    child: Icon(Icons.receipt_long, color: Theme.of(context).primaryColor),
+                    backgroundColor:
+                        Theme.of(context).primaryColor.withOpacity(0.1),
+                    child: Icon(Icons.receipt_long,
+                        color: Theme.of(context).primaryColor),
                   ),
                   // Title: Order Number
                   title: Text(
@@ -100,21 +104,22 @@ class OrdersPage extends StatelessWidget {
                         Text(
                           // Simple date formatting (removing milliseconds for cleaner UI).
                           order.timestamp.toLocal().toString().split('.')[0],
-                          style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                          style:
+                              TextStyle(color: Colors.grey[600], fontSize: 12),
                         ),
                         const SizedBox(height: 2),
                         Text(
                           'Total: €${order.finalAmountPaid.toStringAsFixed(2)}',
                           style: const TextStyle(
-                            fontWeight: FontWeight.bold, 
-                            color: Colors.black87
-                          ),
+                              fontWeight: FontWeight.bold,
+                              color: Colors.black87),
                         ),
                       ],
                     ),
                   ),
                   // Trailing arrow to indicate navigability.
-                  trailing: const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey),
+                  trailing: const Icon(Icons.arrow_forward_ios,
+                      size: 16, color: Colors.grey),
                   onTap: () {
                     // Navigate to the detailed view of this specific order.
                     Navigator.push(

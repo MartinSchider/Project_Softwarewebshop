@@ -6,26 +6,31 @@ import 'package:webshop/models/app_user.dart';
 import 'package:webshop/pages/admin/admin_dashboard_page.dart';
 import 'package:webshop/pages/orders_page.dart';
 import 'package:webshop/pages/wishlist_page.dart';
+import 'package:webshop/pages/fidelity_card_page.dart';
 import 'package:webshop/services/auth_service.dart';
-import 'package:webshop/utils/constants.dart';
+import 'package:webshop/utils/constants.dart'; // Import constants for consistent styling
 
-/// The personal dashboard for authenticated users.
+/// The central dashboard for the logged-in user.
 ///
-/// This page acts as a portal to user-specific features like:
-/// * Viewing order history.
-/// * Managing the wishlist.
-/// * Accessing the Admin Panel (if the user has the 'isAdmin' flag).
-/// * Signing out.
+/// This page acts as a navigation hub, providing quick access to all
+/// customer-centric features:
+/// * **Profile Overview**: Displays basic user info (Email).
+/// * **Order History**: Link to past purchases.
+/// * **Wishlist**: Link to saved favorite items.
+/// * **Fidelity Program**: Access to the digital loyalty card.
+/// * **Admin Tools**: Conditionally rendered link for administrators.
 class CustomerAreaPage extends StatelessWidget {
   const CustomerAreaPage({super.key});
 
   @override
   Widget build(BuildContext context) {
+    // Access Firebase Auth directly to get the current user's session data.
     final user = FirebaseAuth.instance.currentUser;
     final AuthService authService = AuthService();
 
+    // Safety Check: Although this page should be protected by upstream navigation logic,
+    // this guard prevents crashes if the user session becomes invalid.
     if (user == null) {
-      // Fallback UI for unauthenticated state (though usually unreachable via normal navigation).
       return Scaffold(
         appBar: AppBar(title: const Text('Personal Area')),
         body: const Center(child: Text('Please log in.')),
@@ -36,79 +41,107 @@ class CustomerAreaPage extends StatelessWidget {
       appBar: AppBar(
         title: const Text('Personal Area'),
         actions: [
+          // --- LOGOUT ACTION ---
           IconButton(
             icon: const Icon(Icons.logout),
+            tooltip: 'Logout',
             onPressed: () async {
+              // Sign out from Firebase and close this screen to return to the main view.
               await authService.signOut();
-              // Check mounted to ensure context is valid before popping.
               if (context.mounted) Navigator.of(context).pop();
             },
           )
         ],
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(defaultPadding),
+        padding: const EdgeInsets.all(defaultPadding), // Use constant padding
         child: Column(
           children: [
-            // User Avatar Placeholder
+            // ==================================================================
+            // HEADER SECTION (Avatar & Email)
+            // ==================================================================
             const CircleAvatar(
               radius: 40,
-              backgroundColor: lightGreyColor,
+              backgroundColor: lightGreyColor, // Use constant color
               child: Icon(Icons.person, size: 50, color: Colors.grey),
             ),
-            const SizedBox(height: 16),
-            
-            // Display User Email
+            const SizedBox(height: defaultPadding),
             Text(
               user.email ?? 'Customer',
               style: Theme.of(context).textTheme.headlineSmall,
+              textAlign: TextAlign.center,
             ),
             const SizedBox(height: 32),
 
-            // --- ROLE-BASED UI GENERATION ---
-            // We fetch the full user profile from Firestore to determine if they are an Admin.
-            // This is an async operation, so we use FutureBuilder to handle the loading state.
+            // ==================================================================
+            // DYNAMIC MENU GRID
+            // ==================================================================
+            // We use a FutureBuilder to fetch the user's full profile data (AppUser).
+            // This is necessary to check the 'isAdmin' flag, which isn't available
+            // in the standard FirebaseAuth user object.
             FutureBuilder<AppUser?>(
               future: authService.getAppUserProfileOnce(),
               builder: (context, snapshot) {
-                // Default to false (safe fail) if data is loading or null.
+                // Determine admin status (default to false if loading or null)
                 final bool isAdmin = snapshot.data?.isAdmin ?? false;
 
-                return GridView.count(
+                // Use a GridView with SliverGridDelegateWithMaxCrossAxisExtent
+                // to ensure the menu buttons have a consistent size and aspect ratio,
+                // matching the responsive behavior of the product cards.
+                return GridView(
                   shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  crossAxisCount: 2,
-                  crossAxisSpacing: defaultPadding,
-                  mainAxisSpacing: defaultPadding,
+                  physics: const NeverScrollableScrollPhysics(), // Let the outer ScrollView handle scrolling
+                  gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                    maxCrossAxisExtent: 280, // Same logic as ProductsScreen
+                    childAspectRatio: 0.60,  // Consistent aspect ratio
+                    crossAxisSpacing: smallPadding, // Consistent spacing
+                    mainAxisSpacing: smallPadding,
+                  ),
                   children: [
+                    // 1. My Orders Button
                     _buildMenuButton(
                       context,
                       title: 'My Orders',
                       icon: Icons.receipt_long,
                       color: Colors.blueAccent,
-                      onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const OrdersPage())),
+                      onTap: () => Navigator.of(context).push(
+                          MaterialPageRoute(builder: (_) => const OrdersPage())),
                     ),
+                    
+                    // 2. Wishlist Button
                     _buildMenuButton(
                       context,
                       title: 'Wishlist',
                       icon: Icons.favorite_border,
                       color: Colors.pinkAccent,
-                      onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const WishlistPage())),
+                      onTap: () => Navigator.of(context).push(
+                          MaterialPageRoute(builder: (_) => const WishlistPage())),
                     ),
                     
-                    // --- ADMIN BUTTON ---
-                    // Conditionally rendered only for users with the isAdmin flag.
+                    // 3. Fidelity Card Button
+                    _buildMenuButton(
+                      context,
+                      title: 'Fidelity Card',
+                      icon: Icons.card_membership,
+                      color: Colors.purple,
+                      onTap: () => Navigator.of(context).push(
+                          MaterialPageRoute(builder: (_) => const FidelityCardPage())),
+                    ),
+
+                    // 4. Admin Panel Button (Conditional Render)
+                    // Only visible if the user has administrative privileges.
                     if (isAdmin)
                       _buildMenuButton(
                         context,
                         title: 'Admin Panel',
                         icon: Icons.admin_panel_settings,
-                        color: Colors.black87,
-                        onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AdminDashboardPage())),
+                        color: blackColor, // Use constant color
+                        onTap: () => Navigator.of(context).push(
+                            MaterialPageRoute(builder: (_) => const AdminDashboardPage())),
                       ),
                   ],
                 );
-              }
+              },
             ),
           ],
         ),
@@ -116,25 +149,44 @@ class CustomerAreaPage extends StatelessWidget {
     );
   }
 
-  /// Helper to build consistent dashboard menu cards.
-  Widget _buildMenuButton(BuildContext context, 
-      {required String title, required IconData icon, required Color color, required VoidCallback onTap}) {
+  /// Helper widget to construct consistent, clickable menu cards.
+  ///
+  /// This encapsulates the design logic for the dashboard buttons, ensuring
+  /// uniform padding, elevation, and shape across the grid.
+  ///
+  /// * [title]: Label text displayed below the icon.
+  /// * [icon]: The Material icon to represent the feature.
+  /// * [color]: The primary color used for the icon and its background tint.
+  /// * [onTap]: The function to execute when the card is tapped (usually navigation).
+  Widget _buildMenuButton(BuildContext context,
+      {required String title,
+      required IconData icon,
+      required Color color,
+      required VoidCallback onTap}) {
     return Card(
-      elevation: 4,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(borderRadius)),
+      elevation: cardElevation, // Use constant elevation
+      shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(borderRadius)), // Use constant radius
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(borderRadius),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
+            // Icon container with colored background tint
             Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(color: color.withOpacity(0.1), shape: BoxShape.circle),
+              padding: const EdgeInsets.all(defaultPadding),
+              decoration: BoxDecoration(
+                  color: color.withOpacity(0.1), shape: BoxShape.circle),
               child: Icon(icon, size: 40, color: color),
             ),
-            const SizedBox(height: 16),
-            Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const SizedBox(height: defaultPadding),
+            
+            // Label Text
+            Text(title,
+                textAlign: TextAlign.center,
+                style:
+                    const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
           ],
         ),
       ),

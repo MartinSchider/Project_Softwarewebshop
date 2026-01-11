@@ -100,8 +100,8 @@ const List<String> productCategories = [
   'Home',
   'Beauty',
   'Sports',
-  'Gadget', // Nuovo
-  'Music',  // Nuovo
-  'Food',   // Nuovo
+  'Gadget',
+  'Music',
+  'Food',
   'General',
 ];

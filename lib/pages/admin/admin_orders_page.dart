@@ -40,10 +40,10 @@ class AdminOrdersPage extends StatelessWidget {
               errorMessage: snapshot.error.toString(),
               // Retry isn't strictly necessary for a StreamBuilder as it auto-reconnects,
               // but it provides a good UX for manual re-triggering if needed.
-              onRetry: () {}, 
+              onRetry: () {},
             );
           }
-          
+
           final orders = snapshot.data ?? [];
 
           // --- Empty State ---
@@ -92,14 +92,24 @@ class AdminOrdersPage extends StatelessWidget {
   Widget _buildStatusChip(String status) {
     Color color;
     switch (status.toLowerCase()) {
-      case 'pending': color = Colors.orange; break;
-      case 'shipped': color = Colors.blue; break;
-      case 'delivered': color = Colors.green; break;
-      case 'cancelled': color = Colors.red; break;
-      default: color = Colors.grey;
+      case 'pending':
+        color = Colors.orange;
+        break;
+      case 'shipped':
+        color = Colors.blue;
+        break;
+      case 'delivered':
+        color = Colors.green;
+        break;
+      case 'cancelled':
+        color = Colors.red;
+        break;
+      default:
+        color = Colors.grey;
     }
     return Chip(
-      label: Text(status.toUpperCase(), style: const TextStyle(color: Colors.white, fontSize: 10)),
+      label: Text(status.toUpperCase(),
+          style: const TextStyle(color: Colors.white, fontSize: 10)),
       backgroundColor: color,
     );
   }

@@ -1,104 +1,149 @@
 // lib/models/product.dart
-import 'package:flutter/foundation.dart';
-import 'package:webshop/utils/constants.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
-/// Represents a sellable item within the application.
+/// Represents a product available in the webshop.
 ///
-/// This model acts as the bridge between the Firestore database structure
-/// and the Flutter UI. It is marked as [immutable] to ensure that product
-/// data cannot be modified unexpectedly once loaded into memory, which is
-/// crucial for reliable state management (e.g., in Riverpod providers).
-@immutable
+/// This model holds all the essential information about an item, including its
+/// display details (name, image, description), pricing logic (current price,
+/// original price, discounts), inventory status (stock), and shipping estimates.
+///
+/// It provides methods to serialize/deserialize data for Cloud Firestore.
 class Product {
-  /// The unique document ID from Firestore.
+  /// The unique identifier of the product document in Firestore.
   final String id;
 
   /// The display name of the product.
   final String name;
 
-  /// A detailed description of the product features.
+  /// A detailed description of the product's features.
   final String description;
 
-  /// The unit price of the product.
+  /// The current selling price of the product (after any discounts).
   final double price;
 
-  /// The URL of the product image (remote storage).
+  /// The URL of the product image (hosted on Firebase Storage or external).
   final String imageUrl;
 
-  /// The quantity currently available in the inventory.
-  ///
-  /// This field is critical for the [CartService] to validate availability
-  /// before adding items to the cart.
-  final int stock;
-
-  /// The category of the product (e.g., 'Electronics', 'Food', 'General').
-  /// Used for filtering the product list in the UI.
+  /// The category this product belongs to (e.g., 'Electronics', 'Clothing').
   final String category;
 
-  /// Creates a constant [Product] instance.
+  /// The current quantity available in the inventory.
+  final int stock;
+
+  /// The average rating derived from user reviews (0.0 to 5.0).
+  final double averageRating;
+
+  /// The total number of reviews submitted for this product.
+  final int reviewCount;
+
+  /// The percentage discount applied to the original price (0-100).
+  final int discountPercentage;
+
+  /// The original listing price before discount.
   ///
-  /// All fields are required to ensure the UI never has to handle partially
-  /// initialized product objects.
-  const Product({
+  /// Used to calculate savings and display "strike-through" prices.
+  final double originalPrice;
+
+  /// The estimated number of business days required for delivery.
+  ///
+  /// * Value <= 2 triggers the "EXPRESS" badge in the UI.
+  /// * Used to calculate the estimated delivery date in the detail view.
+  final int deliveryDays;
+
+  /// Creates a [Product] instance.
+  ///
+  /// If [originalPrice] is not provided, it defaults to [price], implying
+  /// no discount is currently active.
+  Product({
     required this.id,
     required this.name,
     required this.description,
     required this.price,
     required this.imageUrl,
-    required this.stock,
     required this.category,
-  });
+    required this.stock,
+    this.averageRating = 0.0,
+    this.reviewCount = 0,
+    this.discountPercentage = 0,
+    double? originalPrice,
+    this.deliveryDays = 3, // Default standard delivery
+  }) : originalPrice = originalPrice ?? price;
 
-  /// Factory constructor to transform Firestore data into a [Product] object.
+  /// Converts the [Product] instance to a JSON-compatible [Map].
   ///
-  /// This method implements the **Adapter Pattern**, converting the specific
-  /// database field names (e.g., `productName`) into the clean internal names
-  /// used by the app (e.g., `name`).
-  ///
-  /// * [data]: The raw map from `document.data()`.
-  /// * [id]: The document ID, passed separately as it's outside the data map.
-  factory Product.fromMap(Map<String, dynamic> data, String id) {
-    return Product(
-      id: id,
-      // MAPPING EXPLANATION:
-      // The database uses 'productName' but the app uses 'name'.
-      // We map them here to decouple the database schema from the UI code.
-      // We use 'as String?' cast and '??' default value to prevent crashes
-      // if the database has missing fields or null values.
-      name: data['productName'] as String? ?? 'Unknown Product',
-
-      description: data['productDescription'] as String? ?? '',
-
-      // Firestore might return price as int (e.g., 10) or double (e.g., 10.5).
-      // Casting to 'num?' covers both cases, then we convert to double.
-      price: (data['productPrice'] as num?)?.toDouble() ?? 0.0,
-
-      // Use the new constant name (defaultNoImageUrl)
-      imageUrl: data['imageUrl'] as String? ?? defaultNoImageUrl,
-
-      // STOCK HANDLING LOGIC:
-      // If the 'stock' field is missing in the DB (legacy data), we default to 999.
-      // Why? Defaulting to 0 would prevent users from adding the product to the cart.
-      stock: (data['stock'] as int?) ?? 999,
-
-      // CATEGORY HANDLING:
-      // If the category is missing, we assign 'General' to ensure it appears in lists.
-      category: data['category'] as String? ?? 'General',
-    );
-  }
-
-  /// Converts the [Product] instance back to a [Map] for database operations.
-  ///
-  /// This ensures that when we save or update a product (e.g., via an Admin panel),
-  /// we write back to the correct database field names (`productName`, etc.).
+  /// This method is used when creating or updating a product document
+  /// in Cloud Firestore.
   Map<String, dynamic> toMap() {
     return {
+      // Note: Keys match the legacy schema used in the database.
       'productName': name,
       'productDescription': description,
       'productPrice': price,
       'imageUrl': imageUrl,
-      'stock': stock,
       'category': category,
+      'stock': stock,
+      'averageRating': averageRating,
+      'reviewCount': reviewCount,
+      'discountPercentage': discountPercentage,
+      'originalPrice': originalPrice,
+      'deliveryDays': deliveryDays,
     };
+  }
+
+  /// Factory constructor to create a [Product] from a Firestore [Map].
+  ///
+  /// This method includes robust error handling for data types to prevent
+  /// app crashes if the database contains unexpected formats (e.g., String instead of double).
+  ///
+  /// * [map]: The raw key-value pairs from the database snapshot.
+  /// * [id]: The document ID from Firestore.
+  factory Product.fromMap(Map<String, dynamic> map, String id) {
+    
+    // --- Helper Functions for Type Safety ---
+
+    /// Safely parses a dynamic value into a [double].
+    /// Handles nulls, integers, doubles, and parsable strings.
+    double safeParseDouble(dynamic value) {
+      if (value == null) return 0.0;
+      if (value is int) return value.toDouble();
+      if (value is double) return value;
+      if (value is String) return double.tryParse(value) ?? 0.0;
+      return 0.0;
+    }
+
+    /// Safely parses a dynamic value into an [int].
+    int safeParseInt(dynamic value) {
+      if (value == null) return 0;
+      if (value is int) return value;
+      if (value is String) return int.tryParse(value) ?? 0;
+      return 0;
+    }
+
+    // --- Data Extraction ---
+
+    final double currentPrice = safeParseDouble(map['productPrice']);
+    
+    // Fallback logic: if originalPrice is missing, assume it equals the current price.
+    final double original = map['originalPrice'] != null 
+        ? safeParseDouble(map['originalPrice']) 
+        : currentPrice;
+
+    return Product(
+      id: id,
+      name: map['productName'] ?? '',
+      description: map['productDescription'] ?? '',
+      price: currentPrice,
+      imageUrl: map['imageUrl'] ?? '',
+      category: map['category'] ?? 'General',
+      stock: safeParseInt(map['stock']),
+      averageRating: safeParseDouble(map['averageRating']),
+      reviewCount: safeParseInt(map['reviewCount']),
+      discountPercentage: safeParseInt(map['discountPercentage']),
+      originalPrice: original,
+      // Delivery Logic: Ensure at least a fallback value if field is missing or invalid.
+      deliveryDays: safeParseInt(map['deliveryDays']) > 0 
+          ? safeParseInt(map['deliveryDays']) 
+          : 3,
+    );
   }
 }

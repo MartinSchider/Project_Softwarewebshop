@@ -11,28 +11,36 @@ import 'package:webshop/widgets/custom_image.dart';
 
 /// The main shopping cart screen.
 ///
-/// This screen displays the list of selected products, allows modifying quantities,
-/// and shows the financial breakdown (Subtotal, Discount, Total).
-/// It serves as the entry point for the checkout flow.
+/// This widget displays:
+/// 1. A list of items currently in the user's cart.
+/// 2. Controls to update quantities or remove items.
+/// 3. A summary section showing the subtotal, discounts (if any), and the final total.
+/// 4. A button to proceed to the Shipping/Checkout phase.
+///
+/// It relies on Riverpod providers ([cartItemsProvider], [cartDetailsProvider])
+/// to reactively update the UI as the cart state changes.
 class CartPage extends ConsumerWidget {
   const CartPage({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // We watch two separate providers:
-    // 1. cartItemsProvider: For the list of products (Stream<List<CartItem>>)
-    // 2. cartDetailsProvider: For the calculated totals (Future/Stream<Map>)
+    // Watch cart items (List<CartItem>) to build the product list.
     final cartItemsAsync = ref.watch(cartItemsProvider);
+    
+    // Watch cart details (Map<String, dynamic>) for totals and discounts.
     final cartDetailsAsync = ref.watch(cartDetailsProvider);
+    
+    // Access the service to perform write operations (update/delete).
     final CartService cartService = ref.read(cartServiceProvider);
 
-    // Wrapper function to handle async quantity updates with error feedback.
+    /// Helper function to safely update item quantity.
+    ///
+    /// Wraps the service call in a try-catch block to show a SnackBar on failure.
     Future<void> _updateQuantity(
         BuildContext context, String productId, int newQuantity) async {
       try {
         await cartService.updateCartItemQuantity(productId, newQuantity);
       } catch (e) {
-        // Only show the SnackBar if the user is still on this screen.
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -49,19 +57,21 @@ class CartPage extends ConsumerWidget {
       appBar: AppBar(title: const Text('Your Cart')),
       body: Column(
         children: [
-          // --- PRODUCT LIST SECTION ---
-          // Using Expanded allows the list to take up all available space
-          // pushing the totals section to the bottom.
+          // ==================================================================
+          // 1. PRODUCT LIST SECTION
+          // ==================================================================
           Expanded(
             child: cartItemsAsync.when(
+              // Show loading spinner while fetching items.
               loading: () => const Center(child: CircularProgressIndicator()),
-
-              // Custom error widget with Retry button (Fixes 5.5 No Error Recovery)
+              
+              // Show error widget with retry button on failure.
               error: (err, stack) => ErrorRetryWidget(
                 errorMessage: err.toString(),
                 onRetry: () => ref.refresh(cartItemsProvider),
               ),
-
+              
+              // Render the list of cart items.
               data: (List<CartItem> items) {
                 if (items.isEmpty) {
                   return const Center(
@@ -69,6 +79,7 @@ class CartPage extends ConsumerWidget {
                         style: TextStyle(fontSize: 18)),
                   );
                 }
+                
                 return ListView.builder(
                   itemCount: items.length,
                   itemBuilder: (context, index) {
@@ -80,7 +91,7 @@ class CartPage extends ConsumerWidget {
                         padding: const EdgeInsets.all(8.0),
                         child: Row(
                           children: [
-                            // Product Image (Using Cached CustomImage)
+                            // Product Thumbnail
                             ClipRRect(
                               borderRadius: BorderRadius.circular(8),
                               child: CustomImage(
@@ -91,8 +102,8 @@ class CartPage extends ConsumerWidget {
                               ),
                             ),
                             const SizedBox(width: smallPadding),
-
-                            // Product Info
+                            
+                            // Product Info (Name & Price)
                             Expanded(
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -112,8 +123,8 @@ class CartPage extends ConsumerWidget {
                                 ],
                               ),
                             ),
-
-                            // Quantity Controls
+                            
+                            // Quantity Controls (- 1 +)
                             Row(
                               children: [
                                 IconButton(
@@ -132,7 +143,7 @@ class CartPage extends ConsumerWidget {
                                 ),
                               ],
                             ),
-
+                            
                             // Delete Button
                             IconButton(
                               icon: const Icon(Icons.delete, color: errorColor),
@@ -149,30 +160,34 @@ class CartPage extends ConsumerWidget {
             ),
           ),
 
-          // --- TOTALS & CHECKOUT SECTION ---
-          // This section is pinned to the bottom of the screen.
+          // ==================================================================
+          // 2. TOTALS & CHECKOUT SUMMARY SECTION
+          // ==================================================================
           cartDetailsAsync.when(
+            // Hide summary while loading or if list is empty (handled below).
             loading: () => const SizedBox.shrink(),
+            
+            // Basic error message if metadata fails to load.
             error: (err, stack) => Container(
                 padding: const EdgeInsets.all(16), child: Text('Error: $err')),
+            
             data: (details) {
-              // Extract calculated values with null safety defaults
+              // Extract financial details safely.
               final double subtotal =
                   (details['subtotal'] as num?)?.toDouble() ?? 0.0;
               final double discount =
                   (details['giftCardAppliedAmount'] as num?)?.toDouble() ?? 0.0;
               final double totalToPay =
                   (details['finalAmountToPay'] as num?)?.toDouble() ?? 0.0;
+              
+              // Only show the footer if there are items in the cart.
               final int itemCount = cartItemsAsync.value?.length ?? 0;
-
-              // Hide checkout button if cart is empty
               if (itemCount == 0) return const SizedBox.shrink();
 
               return Container(
                 padding: const EdgeInsets.all(defaultPadding),
                 decoration: BoxDecoration(
                   color: Colors.white,
-                  // Subtle shadow to separate the totals from the list
                   boxShadow: [
                     BoxShadow(
                       color: Colors.black.withOpacity(0.05),
@@ -195,8 +210,8 @@ class CartPage extends ConsumerWidget {
                               style: const TextStyle(fontSize: 16)),
                         ],
                       ),
-
-                      // Discount Row (Conditionally rendered)
+                      
+                      // Discount Row (Conditional)
                       if (discount > 0)
                         Padding(
                           padding: const EdgeInsets.only(top: 8.0),
@@ -214,9 +229,9 @@ class CartPage extends ConsumerWidget {
                             ],
                           ),
                         ),
-
+                      
                       const Divider(height: 24),
-
+                      
                       // Final Total Row
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -231,14 +246,16 @@ class CartPage extends ConsumerWidget {
                                   color: Theme.of(context).primaryColor)),
                         ],
                       ),
+                      
                       const SizedBox(height: 16),
-
-                      // Proceed to Checkout Button
+                      
+                      // Proceed to Shipping Button
                       SizedBox(
                         width: double.infinity,
                         height: 50,
                         child: ElevatedButton(
                           onPressed: () {
+                            // Navigate to the Shipping Address Form
                             Navigator.of(context).push(
                               MaterialPageRoute(
                                   builder: (context) =>

@@ -12,10 +12,10 @@ import 'package:webshop/utils/constants.dart';
 /// The final step of the checkout process.
 ///
 /// This screen allows the user to:
-/// 1. Review the order summary (items and totals).
-/// 2. Apply or remove gift cards (discounts).
-/// 3. Select a payment method (simulated).
-/// 4. Finalize the order.
+/// 1. Review their order items and financial breakdown.
+/// 2. Apply or remove Gift Cards.
+/// 3. Confirm the payment method (simulated).
+/// 4. Finalize the order, which triggers server-side processing and local updates.
 class CheckoutPaymentPage extends ConsumerStatefulWidget {
   const CheckoutPaymentPage({super.key});
 
@@ -25,17 +25,17 @@ class CheckoutPaymentPage extends ConsumerStatefulWidget {
 }
 
 class _CheckoutPaymentPageState extends ConsumerState<CheckoutPaymentPage> {
-  // Services for business logic
+  // Services for business logic execution
   final OrderService _orderService = OrderService();
   final AuthService _authService = AuthService();
 
   // Controller for the gift card input field
   final TextEditingController _giftCardController = TextEditingController();
 
-  // Local state to show a loading spinner during async operations
+  // Local state to show a loading spinner during async network operations
   bool _isLoading = false;
 
-  // Holds the currently applied gift card code to display in the UI
+  // Holds the currently applied gift card code to conditionally update the UI
   String? _appliedGiftCardCode;
 
   @override
@@ -46,7 +46,8 @@ class _CheckoutPaymentPageState extends ConsumerState<CheckoutPaymentPage> {
 
   @override
   Widget build(BuildContext context) {
-    // Watch providers to get real-time updates on cart totals and items
+    // Watch providers to get real-time updates on cart details (price, discount) and item list.
+    // This ensures the summary is always accurate even if backend data changes.
     final cartDetailsAsync = ref.watch(cartDetailsProvider);
     final cartItemsAsync = ref.watch(cartItemsProvider);
 
@@ -55,24 +56,32 @@ class _CheckoutPaymentPageState extends ConsumerState<CheckoutPaymentPage> {
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : cartDetailsAsync.when(
+              // Show loading state while fetching cart metadata
               loading: () => const Center(child: CircularProgressIndicator()),
+              
+              // Handle errors during fetch
               error: (err, stack) =>
                   Center(child: Text('Error loading cart details: $err')),
+              
+              // Render the payment content when data is available
               data: (cartDetails) =>
                   _buildPaymentContent(cartDetails, cartItemsAsync),
             ),
     );
   }
 
-  /// Builds the main payment page content.
+  /// Builds the main content scroll view for the payment page.
   Widget _buildPaymentContent(
       Map<String, dynamic> cartDetails, AsyncValue cartItemsAsync) {
+    // Extract financial data safely
     final double totalPrice =
         (cartDetails['totalPrice'] as num?)?.toDouble() ?? 0.0;
     final double giftCardAppliedAmount =
         (cartDetails['giftCardAppliedAmount'] as num?)?.toDouble() ?? 0.0;
     final double finalAmountToPay =
         (cartDetails['finalAmountToPay'] as num?)?.toDouble() ?? 0.0;
+    
+    // Update local variable for UI logic
     _appliedGiftCardCode = cartDetails['appliedGiftCardCode'] as String?;
 
     return Column(
@@ -85,24 +94,37 @@ class _CheckoutPaymentPageState extends ConsumerState<CheckoutPaymentPage> {
               children: [
                 _buildOrderSummaryHeader(),
                 const SizedBox(height: defaultPadding),
+                
+                // 1. List of items being purchased
                 _buildCartItemsList(cartItemsAsync),
+                
                 const SizedBox(height: 24),
+                
+                // 2. Financial Breakdown (Subtotal, Discount, Total)
                 _buildFinancialBreakdown(
                     totalPrice, giftCardAppliedAmount, finalAmountToPay),
+                
                 const SizedBox(height: 24),
+                
+                // 3. Gift Card Management Section
                 _buildGiftCardSection(),
+                
                 const SizedBox(height: 24),
+                
+                // 4. Payment Method Selection (Static for this demo)
                 _buildPaymentMethodSection(),
               ],
             ),
           ),
         ),
+        
+        // 5. "Complete Order" Action Button (Pinned to bottom)
         _buildActionButton(finalAmountToPay),
       ],
     );
   }
 
-  /// Builds the order summary header.
+  /// Builds the "Order Summary" text header.
   Widget _buildOrderSummaryHeader() {
     return const Text(
       orderSummaryTitle,
@@ -110,7 +132,9 @@ class _CheckoutPaymentPageState extends ConsumerState<CheckoutPaymentPage> {
     );
   }
 
-  /// Builds the cart items list.
+  /// Builds the list of cart item cards.
+  ///
+  /// Handles the AsyncValue state of the items provider separately.
   Widget _buildCartItemsList(AsyncValue cartItemsAsync) {
     return cartItemsAsync.when(
       loading: () => const Center(child: CircularProgressIndicator()),
@@ -127,7 +151,7 @@ class _CheckoutPaymentPageState extends ConsumerState<CheckoutPaymentPage> {
     );
   }
 
-  /// Builds a single cart item card.
+  /// Builds an individual card representing a cart item.
   Widget _buildCartItemCard(CartItem item) {
     return Card(
       margin: const EdgeInsets.symmetric(vertical: smallPadding),
@@ -135,6 +159,7 @@ class _CheckoutPaymentPageState extends ConsumerState<CheckoutPaymentPage> {
         padding: const EdgeInsets.all(smallPadding),
         child: Row(
           children: [
+            // Product Thumbnail
             Image.network(
               item.product.imageUrl,
               width: 50,
@@ -142,6 +167,8 @@ class _CheckoutPaymentPageState extends ConsumerState<CheckoutPaymentPage> {
               errorBuilder: (ctx, err, stack) => const Icon(Icons.broken_image),
             ),
             const SizedBox(width: smallPadding),
+            
+            // Product Details
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -153,6 +180,8 @@ class _CheckoutPaymentPageState extends ConsumerState<CheckoutPaymentPage> {
                 ],
               ),
             ),
+            
+            // Item Total Price
             Text('€${(item.product.price * item.quantity).toStringAsFixed(2)}',
                 style: const TextStyle(fontWeight: FontWeight.bold)),
           ],
@@ -161,7 +190,7 @@ class _CheckoutPaymentPageState extends ConsumerState<CheckoutPaymentPage> {
     );
   }
 
-  /// Builds the financial breakdown section.
+  /// Builds the section displaying Subtotal, Discounts, and Final Total.
   Widget _buildFinancialBreakdown(double totalPrice,
       double giftCardAppliedAmount, double finalAmountToPay) {
     return Column(
@@ -176,7 +205,7 @@ class _CheckoutPaymentPageState extends ConsumerState<CheckoutPaymentPage> {
     );
   }
 
-  /// Builds the gift card section.
+  /// Builds the Gift Card input or applied status section.
   Widget _buildGiftCardSection() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -186,6 +215,8 @@ class _CheckoutPaymentPageState extends ConsumerState<CheckoutPaymentPage> {
           style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
         ),
         const SizedBox(height: smallPadding),
+        
+        // Conditional rendering: Show input field OR remove button
         if (_appliedGiftCardCode != null && _appliedGiftCardCode!.isNotEmpty)
           _buildAppliedGiftCardRow()
         else
@@ -194,7 +225,7 @@ class _CheckoutPaymentPageState extends ConsumerState<CheckoutPaymentPage> {
     );
   }
 
-  /// Builds the applied gift card display row.
+  /// Displays the currently applied gift card code and a remove button.
   Widget _buildAppliedGiftCardRow() {
     return Row(
       children: [
@@ -212,7 +243,7 @@ class _CheckoutPaymentPageState extends ConsumerState<CheckoutPaymentPage> {
     );
   }
 
-  /// Builds the gift card input row.
+  /// Displays the text field and button to apply a new gift card.
   Widget _buildGiftCardInputRow() {
     return Row(
       children: [
@@ -234,7 +265,7 @@ class _CheckoutPaymentPageState extends ConsumerState<CheckoutPaymentPage> {
     );
   }
 
-  /// Builds the payment method section.
+  /// Builds the section showing the selected payment method.
   Widget _buildPaymentMethodSection() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -255,11 +286,12 @@ class _CheckoutPaymentPageState extends ConsumerState<CheckoutPaymentPage> {
     );
   }
 
-  /// Builds the action button at the bottom.
+  /// Builds the main action button ("Complete Order").
   Widget _buildActionButton(double finalAmountToPay) {
     return Padding(
       padding: const EdgeInsets.all(defaultPadding),
       child: ElevatedButton(
+        // Disable button if calculations are invalid (negative total)
         onPressed: finalAmountToPay >= 0 ? _completeOrder : null,
         style: ElevatedButton.styleFrom(minimumSize: const Size.fromHeight(50)),
         child: Text(
@@ -271,7 +303,7 @@ class _CheckoutPaymentPageState extends ConsumerState<CheckoutPaymentPage> {
     );
   }
 
-  /// Helper widget to build consistent price rows.
+  /// Helper widget to render consistent rows for price breakdown.
   Widget _buildPriceRow(String label, double amount,
       {Color? color, bool isTotal = false}) {
     return Padding(
@@ -299,7 +331,8 @@ class _CheckoutPaymentPageState extends ConsumerState<CheckoutPaymentPage> {
     );
   }
 
-  /// Displays a standardized error dialog.
+  // --- HELPER METHODS FOR DIALOGS AND SNACKBARS ---
+
   void _showErrorDialog(String title, String message) {
     showDialog(
       context: context,
@@ -318,7 +351,6 @@ class _CheckoutPaymentPageState extends ConsumerState<CheckoutPaymentPage> {
     );
   }
 
-  /// Displays a standardized snackbar feedback.
   void _showSnackBar(String message, {bool isError = false}) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -329,7 +361,9 @@ class _CheckoutPaymentPageState extends ConsumerState<CheckoutPaymentPage> {
     );
   }
 
-  /// Calls the service to validate and apply a gift card.
+  // --- BUSINESS LOGIC METHODS ---
+
+  /// Attempts to apply a gift card using the CartService.
   Future<void> _applyGiftCard() async {
     final giftCardCode = _giftCardController.text.trim();
     if (giftCardCode.isEmpty) {
@@ -352,7 +386,7 @@ class _CheckoutPaymentPageState extends ConsumerState<CheckoutPaymentPage> {
     }
   }
 
-  /// Calls the service to remove the current gift card.
+  /// Removes the currently applied gift card using the CartService.
   Future<void> _removeGiftCard() async {
     setState(() => _isLoading = true);
 
@@ -368,7 +402,12 @@ class _CheckoutPaymentPageState extends ConsumerState<CheckoutPaymentPage> {
     }
   }
 
-  /// Finalizes the order transaction.
+  /// Finalizes the order process.
+  /// 
+  /// 1. Retrieves user email.
+  /// 2. Fetches current cart subtotal for fidelity points calculation.
+  /// 3. Calls the OrderService to process the transaction.
+  /// 4. Navigates to the Confirmation Page on success.
   Future<void> _completeOrder() async {
     final userEmail = _authService.currentUser?.email;
 
@@ -378,18 +417,23 @@ class _CheckoutPaymentPageState extends ConsumerState<CheckoutPaymentPage> {
       return;
     }
 
+    // 1. Retrieve the cart total (Subtotal) to calculate fidelity points correctly
+    final cartState = ref.read(cartDetailsProvider);
+    // 'subtotal' comes from the logic in cart_providers.dart, representing the raw cart value
+    final double subtotal =
+        (cartState.value?['subtotal'] as num?)?.toDouble() ?? 0.0;
+
     setState(() => _isLoading = true);
 
     try {
-      // Call Cloud Function to process order (move from cart to orders collection)
-      final result = await _orderService.completeOrder(userEmail);
+      // 2. Pass the subtotal to the completeOrder method service
+      final result = await _orderService.completeOrder(userEmail, subtotal);
 
-      // Safe casting of the result map
       final data = result as Map<String, dynamic>?;
 
       if (data != null && data['orderId'] != null) {
         if (mounted) {
-          // Navigate to Success Page and clear history (prevent back button)
+          // Navigate to Success Page on successful order
           await Navigator.of(context).pushAndRemoveUntil(
             MaterialPageRoute(
               builder: (context) => OrderConfirmationPage(

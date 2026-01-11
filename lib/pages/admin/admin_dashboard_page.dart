@@ -40,7 +40,8 @@ class AdminDashboardPage extends ConsumerWidget {
                 child: const Text('Cancel')),
             TextButton(
                 onPressed: () => Navigator.pop(ctx, true),
-                child: const Text('Delete', style: TextStyle(color: Colors.red))),
+                child:
+                    const Text('Delete', style: TextStyle(color: Colors.red))),
           ],
         ),
       );
@@ -63,7 +64,8 @@ class AdminDashboardPage extends ConsumerWidget {
           'Admin Dashboard',
           style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
         ),
-        backgroundColor: Colors.black87,
+        // MODIFICA: Uso il colore primario (verde) invece del nero
+        backgroundColor: Theme.of(context).primaryColor,
         // We strictly define the icon color to ensure visibility against the dark app bar.
         iconTheme: const IconThemeData(color: Colors.white),
         actions: [

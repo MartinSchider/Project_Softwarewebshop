@@ -25,7 +25,13 @@ class _AdminOrderDetailPageState extends State<AdminOrderDetailPage> {
   late String _currentStatus;
 
   // The allowed lifecycle states for an order.
-  final List<String> _statusOptions = ['pending', 'processing', 'shipped', 'delivered', 'cancelled'];
+  final List<String> _statusOptions = [
+    'pending',
+    'processing',
+    'shipped',
+    'delivered',
+    'cancelled'
+  ];
 
   @override
   void initState() {
@@ -43,7 +49,7 @@ class _AdminOrderDetailPageState extends State<AdminOrderDetailPage> {
       // Show a blocking loader to prevent interactions while writing to Firestore.
       UiHelper.showLoading(context);
       await _repo.updateOrderStatus(widget.order.id, newStatus);
-      
+
       // Check mounted to ensure the widget is still in the tree before using context.
       if (mounted) {
         Navigator.pop(context); // Dismiss the loading dialog.
@@ -80,16 +86,21 @@ class _AdminOrderDetailPageState extends State<AdminOrderDetailPage> {
                 padding: const EdgeInsets.all(16.0),
                 child: Row(
                   children: [
-                    const Text('Status:', style: TextStyle(fontWeight: FontWeight.bold)),
+                    const Text('Status:',
+                        style: TextStyle(fontWeight: FontWeight.bold)),
                     const SizedBox(width: 16),
                     Expanded(
                       child: DropdownButton<String>(
-                        value: _statusOptions.contains(_currentStatus) ? _currentStatus : _statusOptions.first,
+                        value: _statusOptions.contains(_currentStatus)
+                            ? _currentStatus
+                            : _statusOptions.first,
                         isExpanded: true,
-                        items: _statusOptions.map((s) => DropdownMenuItem(
-                          value: s,
-                          child: Text(s.toUpperCase()),
-                        )).toList(),
+                        items: _statusOptions
+                            .map((s) => DropdownMenuItem(
+                                  value: s,
+                                  child: Text(s.toUpperCase()),
+                                ))
+                            .toList(),
                         onChanged: _updateStatus,
                       ),
                     ),
@@ -100,20 +111,22 @@ class _AdminOrderDetailPageState extends State<AdminOrderDetailPage> {
             const SizedBox(height: 24),
 
             // --- CUSTOMER INFO ---
-            const Text('Shipping Address', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const Text('Shipping Address',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             const SizedBox(height: 8),
             // Use collection-if to conditionally render address lines or fallback text.
             if (address != null) ...[
               Text('${address['name']} ${address['surname']}'),
               Text(address['address']),
               Text('${address['city']}, ${address['postcode']}'),
-            ] else 
+            ] else
               const Text('No address provided'),
-            
+
             const Divider(height: 32),
 
             // --- ITEMS ---
-            const Text('Items', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const Text('Items',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             // We use shrinkWrap: true and NeverScrollableScrollPhysics because
             // this list is nested inside a SingleChildScrollView.
             ListView.builder(
@@ -127,18 +140,20 @@ class _AdminOrderDetailPageState extends State<AdminOrderDetailPage> {
                   title: Text(item.product.name),
                   subtitle: Text('Qty: ${item.quantity}'),
                   // We calculate the line total (price * qty) for immediate visibility.
-                  trailing: Text('€${(item.product.price * item.quantity).toStringAsFixed(2)}'),
+                  trailing: Text(
+                      '€${(item.product.price * item.quantity).toStringAsFixed(2)}'),
                 );
               },
             ),
             const Divider(),
-            
+
             // --- TOTAL ---
             Align(
               alignment: Alignment.centerRight,
               child: Text(
                 'Total: €${order.finalAmountPaid.toStringAsFixed(2)}',
-                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                style:
+                    const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
               ),
             ),
           ],
