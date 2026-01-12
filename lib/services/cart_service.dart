@@ -13,10 +13,17 @@ import 'package:webshop/repositories/product_repository.dart';
 /// It enforces rules like stock validation and ensures data consistency between
 /// the client and the server.
 class CartService {
-  final CartRepository _cartRepository = CartRepository();
-  final ProductRepository _productRepository = ProductRepository();
-  final FirebaseAuth _auth = FirebaseAuth.instance;
-  final FirebaseFunctions _functions = FirebaseFunctions.instance;
+  final CartRepository _cartRepository;
+  final ProductRepository _productRepository;
+  final FirebaseAuth _auth;
+  final FirebaseFunctions _functions;
+
+  /// Allows injecting repositories/auth/functions for testing purposes.
+  CartService({CartRepository? cartRepository, ProductRepository? productRepository, FirebaseAuth? auth, FirebaseFunctions? functions})
+      : _cartRepository = cartRepository ?? CartRepository(),
+        _productRepository = productRepository ?? ProductRepository(),
+        _auth = auth ?? FirebaseAuth.instance,
+        _functions = functions ?? FirebaseFunctions.instance;
 
   /// Helper to get the authenticated user's ID safely.
   String? get _currentUserId => _auth.currentUser?.uid;
@@ -180,7 +187,7 @@ class CartService {
         'giftCardCode': giftCardCode,
         'cartId': userId,
       });
-      return Map<String, dynamic>.from(result.data ?? {});
+      return Map<String, dynamic>.from(result.data as Map<String, dynamic>);
     } on FirebaseFunctionsException catch (e) {
       throw Exception('Gift Card Error: ${e.message}');
     } catch (e) {
@@ -201,7 +208,7 @@ class CartService {
       final result = await callable.call<Map<String, dynamic>>({
         'cartId': userId,
       });
-      return Map<String, dynamic>.from(result.data ?? {});
+      return Map<String, dynamic>.from(result.data as Map<String, dynamic>);
     } on FirebaseFunctionsException catch (e) {
       throw Exception('Gift Card Error: ${e.message}');
     } catch (e) {

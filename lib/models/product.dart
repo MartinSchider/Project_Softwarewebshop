@@ -1,6 +1,4 @@
 // lib/models/product.dart
-import 'package:cloud_firestore/cloud_firestore.dart';
-
 /// Represents a product available in the webshop.
 ///
 /// This model holds all the essential information about an item, including its
@@ -54,7 +52,7 @@ class Product {
   ///
   /// If [originalPrice] is not provided, it defaults to [price], implying
   /// no discount is currently active.
-  Product({
+  const Product({
     required this.id,
     required this.name,
     required this.description,

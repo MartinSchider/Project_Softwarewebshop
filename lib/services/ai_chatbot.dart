@@ -1,6 +1,5 @@
 // lib/services/ai_chatbot.dart
 import 'package:webshop/models/product.dart';
-import 'chatbot/chat_intent.dart';
 import 'chatbot/intent_classifier.dart';
 import 'chatbot/intent_handler_registry.dart';
 import 'chatbot/conversation_context.dart';

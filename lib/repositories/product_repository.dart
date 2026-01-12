@@ -10,7 +10,10 @@ import 'package:webshop/models/product.dart';
 /// * Paginated data fetching for performance.
 /// * Caching strategies to reduce network costs and latency.
 class ProductRepository {
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final FirebaseFirestore _firestore;
+
+  /// Allows injecting a [FirebaseFirestore] instance for testing (emulator/mocks).
+  ProductRepository({FirebaseFirestore? firestore}) : _firestore = firestore ?? FirebaseFirestore.instance;
   
   // A simple in-memory cache to store fetched products by their ID.
   // This prevents redundant network calls when viewing details of the same product multiple times.
@@ -84,6 +87,60 @@ class ProductRepository {
       // Log errors for debugging (consider using a logging service in production)
       print("Error fetching product $id: $e");
       return null;
+    }
+  }
+
+  /// Fetches products by their category. This is used by recommendation
+  /// logic to find similar items.
+  Future<List<Product>> getProductsByCategory(String category, {int limit = 10}) async {
+    try {
+      final querySnapshot = await _firestore
+          .collection('products')
+          .where('category', isEqualTo: category)
+          .limit(limit)
+          .get();
+
+      final list = querySnapshot.docs.map((d) => Product.fromMap(d.data(), d.id)).toList();
+
+      for (final p in list) {
+        _memoryCache[p.id] = p;
+      }
+
+      return list;
+    } catch (e) {
+      print('Error fetching products by category "$category": $e');
+      return <Product>[];
+    }
+  }
+
+  /// A simple text search fallback for cases where more advanced full-text
+  /// capabilities are not available. This performs a client-side filter on
+  /// a bounded set of documents and should be used sparingly for small result sets.
+  Future<List<Product>> searchProductsByText(String queryText, {int limit = 50}) async {
+    try {
+      // Basic optimization: fetch a limited page and filter locally.
+      final snapshot = await _firestore
+          .collection('products')
+          .orderBy('productName')
+          .limit(limit)
+          .get();
+
+      final terms = queryText.toLowerCase().split(RegExp(r"\s+"));
+
+      final results = snapshot.docs
+          .map((d) => Product.fromMap(d.data(), d.id))
+          .where((p) {
+        final hay = (p.name + ' ' + p.description).toLowerCase();
+        return terms.every((t) => hay.contains(t));
+      }).toList();
+
+      // Update cache
+      for (final p in results) _memoryCache[p.id] = p;
+
+      return results;
+    } catch (e) {
+      print('Error during search: $e');
+      return <Product>[];
     }
   }
 }
