@@ -15,6 +15,7 @@ void main() {
         price: 25.00,
         imageUrl: 'https://example.com/test.jpg',
         stock: 10,
+        category: 'General',
       );
     });
 
@@ -25,8 +26,10 @@ void main() {
         quantity: 2,
       );
 
-      expect(cartItem.id, 'cart-1', reason: 'CartItem ID should match the provided value');
-      expect(cartItem.product.id, 'prod-1', reason: 'CartItem should contain the correct product');
+      expect(cartItem.id, 'cart-1',
+          reason: 'CartItem ID should match the provided value');
+      expect(cartItem.product.id, 'prod-1',
+          reason: 'CartItem should contain the correct product');
       expect(cartItem.quantity, 2, reason: 'CartItem quantity should be 2');
     });
 
@@ -38,7 +41,8 @@ void main() {
       );
 
       final totalPrice = cartItem.product.price * cartItem.quantity;
-      expect(totalPrice, 75.00, reason: 'Total price should be quantity (3) × price (25.00) = 75.00');
+      expect(totalPrice, 75.00,
+          reason: 'Total price should be quantity (3) × price (25.00) = 75.00');
     });
 
     test('CartItem.fromMap should correctly deserialize data', () {
@@ -50,9 +54,12 @@ void main() {
       // Note: fromMap requires a Product instance
       final cartItem = CartItem.fromMap(cartItemMap, 'cart-3', testProduct);
 
-      expect(cartItem.id, 'cart-3', reason: 'Deserialized CartItem should have correct ID');
-      expect(cartItem.quantity, 4, reason: 'Quantity should be correctly deserialized from map');
-      expect(cartItem.product.id, 'prod-1', reason: 'Product should be correctly linked to CartItem');
+      expect(cartItem.id, 'cart-3',
+          reason: 'Deserialized CartItem should have correct ID');
+      expect(cartItem.quantity, 4,
+          reason: 'Quantity should be correctly deserialized from map');
+      expect(cartItem.product.id, 'prod-1',
+          reason: 'Product should be correctly linked to CartItem');
     });
 
     test('CartItem.toMap should correctly serialize data', () {
@@ -64,8 +71,11 @@ void main() {
 
       final map = cartItem.toMap();
 
-      expect(map['quantity'], 2, reason: 'Serialized map should contain correct quantity');
-      expect(map['productId'], 'prod-1', reason: 'Serialized map should contain product ID, not full product object');
+      expect(map['quantity'], 2,
+          reason: 'Serialized map should contain correct quantity');
+      expect(map['productId'], 'prod-1',
+          reason:
+              'Serialized map should contain product ID, not full product object');
     });
 
     test('CartItem.copyWith should create a new instance with updated values',
@@ -78,10 +88,14 @@ void main() {
 
       final updated = cartItem.copyWith(quantity: 5);
 
-      expect(updated.quantity, 5, reason: 'copyWith should update quantity to new value');
-      expect(updated.id, 'cart-5', reason: 'copyWith should preserve ID when not changed');
-      expect(updated.product, testProduct, reason: 'copyWith should preserve product when not changed');
-      expect(cartItem.quantity, 2, reason: 'Original CartItem should remain unchanged (immutability)');
+      expect(updated.quantity, 5,
+          reason: 'copyWith should update quantity to new value');
+      expect(updated.id, 'cart-5',
+          reason: 'copyWith should preserve ID when not changed');
+      expect(updated.product, testProduct,
+          reason: 'copyWith should preserve product when not changed');
+      expect(cartItem.quantity, 2,
+          reason: 'Original CartItem should remain unchanged (immutability)');
     });
 
     test('CartItem should handle quantity of 1', () {

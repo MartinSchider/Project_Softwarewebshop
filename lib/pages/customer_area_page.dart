@@ -1,7 +1,6 @@
 // lib/pages/customer_area_page.dart
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:webshop/auth_page.dart';
 import 'package:webshop/models/app_user.dart';
 import 'package:webshop/pages/admin/admin_dashboard_page.dart';
 import 'package:webshop/pages/orders_page.dart';

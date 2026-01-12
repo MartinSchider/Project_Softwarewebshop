@@ -1,23 +1,27 @@
-// functions/index.js
+/**
+ * ============================================================================
+ * WEB SHOP CLOUD FUNCTIONS
+ * Backend logic for managing the shopping cart, orders, and stock management.
+ * ============================================================================
+ */
+
 const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
 
+// Initialize Firebase Admin SDK
 admin.initializeApp();
 const db = admin.firestore();
 
-// ==================================================================
-// 1. CALCULATE CART TOTAL
-// ==================================================================
+// =================================================================================
+// 1. CALCULATE CART TOTAL (Background Trigger)
+// =================================================================================
 /**
- * Trigger: Firestore onWrite event for specific cart items.
- * Purpose: Automatically recalculates the shopping cart totals whenever an item is added, 
- * updated, or removed.
- * * Logic:
- * 1. Fetches all items currently in the cart to ensure the total is strictly accurate.
- * 2. Iterates through items to sum up the price and quantity.
- * 3. Checks for any applied Gift Cards in the parent cart document.
- * 4. Recalculates the final amount to pay, ensuring it doesn't drop below zero.
- * 5. Updates the cart document with the new totals and timestamp.
+ * Trigger: Firestore `onWrite` event on any item inside `carts/{cartId}/items`.
+ * * Mechanism:
+ * 1. Fetches all items in the cart to ensure the total is calculated from scratch (prevents drift).
+ * 2. Sums up quantity and price.
+ * 3. Checks the parent Cart document for any applied Gift Cards.
+ * 4. Updates the parent Cart document with the new `totalPrice`, `itemCount`, and `finalAmountToPay`.
  */
 exports.calculateCartTotal = functions.firestore
   .document("carts/{cartId}/items/{itemId}")
@@ -27,61 +31,61 @@ exports.calculateCartTotal = functions.firestore
     const itemsRef = cartRef.collection("items");
 
     try {
-      // Fetch all items to recalculate from scratch
+      // 1. Fetch all items (Read Operation)
       const itemsSnapshot = await itemsRef.get();
       let newTotalPrice = 0;
       let newItemCount = 0;
 
+      // 2. Iterate and Sum
       itemsSnapshot.forEach((doc) => {
         const d = doc.data();
-        // Robust fallback to handle different field names (productPrice vs price)
+        // Fallback logic for different naming conventions (price vs productPrice)
         const p = (typeof d.productPrice === 'number') ? d.productPrice : (d.price || 0);
         const q = (typeof d.quantity === 'number') ? d.quantity : 0;
         newTotalPrice += p * q;
         newItemCount += q;
       });
 
-      // Fetch cart metadata to check for Gift Cards
+      // 3. Check for Discounts (Gift Cards)
       const cartDoc = await cartRef.get();
       const cartData = cartDoc.data() || {};
       
       let finalAmount = newTotalPrice;
       const giftAmt = (typeof cartData.giftCardAppliedAmount === 'number') ? cartData.giftCardAppliedAmount : 0;
       
-      // Apply discount logic if a gift card is present
       if (cartData.appliedGiftCardCode && giftAmt > 0) {
+          // Ensure total doesn't go below zero
           finalAmount = Math.max(0, newTotalPrice - giftAmt);
       }
 
-      // Atomically update the cart totals
+      // 4. Update Cart (Write Operation)
       await cartRef.set({
           totalPrice: newTotalPrice,
           itemCount: newItemCount,
           finalAmountToPay: finalAmount,
-          subtotal: newTotalPrice, // Used for fidelity points calculation
+          subtotal: newTotalPrice, // Used for fidelity points
           lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
       }, { merge: true });
+      
       return null;
-    } catch (e) { console.error(e); return null; }
+    } catch (e) { 
+      console.error("[calculateCartTotal] Error:", e); 
+      return null; 
+    }
   });
 
-// ==================================================================
-// 2. APPLY GIFT CARD
-// ==================================================================
+// =================================================================================
+// 2. APPLY GIFT CARD (HTTPS Callable)
+// =================================================================================
 /**
- * Callable Function: Allows a user to apply a gift card to their cart.
- * * Logic:
- * 1. Validates authentication and input data.
- * 2. Uses a Transaction to ensure data integrity.
- * 3. Checks if the Gift Card exists, is active, and has a positive balance.
- * 4. Checks if the Cart exists and if a Gift Card is already applied (limit 1 per order).
- * 5. Calculates the discount amount (min(balance, total_cart_price)).
- * 6. Deducts the amount from the Gift Card balance and updates the Cart.
+ * Callable Function: Applies a gift card code to the user's cart.
+ * * Mechanism:
+ * Uses a Transaction to ensure the Gift Card balance is checked and deducted atomically.
+ * It prevents race conditions where a user might use the same card twice simultaneously.
  */
 exports.applyGiftCard = functions.https.onCall(async (data, context) => {
   if (!context.auth) throw new functions.https.HttpsError("unauthenticated", "Auth required.");
   
-  // Supports both naming conventions for the code
   const giftCardCode = data.giftCardCode || data.code;
   const cartId = context.auth.uid;
 
@@ -94,10 +98,10 @@ exports.applyGiftCard = functions.https.onCall(async (data, context) => {
     const gDoc = await t.get(giftRef);
     const cDoc = await t.get(cartRef);
 
+    // Validations
     if (!gDoc.exists) throw new functions.https.HttpsError("not-found", "Card not found.");
     const gData = gDoc.data();
     
-    // Validation: Check activity and balance
     if (gData.isActive === false || gData.balance <= 0) {
         throw new functions.https.HttpsError("failed-precondition", "Card invalid or empty.");
     }
@@ -105,16 +109,15 @@ exports.applyGiftCard = functions.https.onCall(async (data, context) => {
     if (!cDoc.exists) throw new functions.https.HttpsError("not-found", "Cart not found.");
     const cData = cDoc.data();
     
-    // Validation: Prevent multiple cards
     if (cData.appliedGiftCardCode) throw new functions.https.HttpsError("failed-precondition", "Card already applied.");
 
+    // Calculation
     const total = cData.totalPrice || 0;
-    // Calculate deductible amount
     const amount = Math.min(gData.balance, total);
     
     if (amount <= 0) throw new functions.https.HttpsError("failed-precondition", "Nothing to apply.");
 
-    // Perform updates
+    // Updates
     t.update(giftRef, { balance: gData.balance - amount });
     t.update(cartRef, {
       giftCardAppliedAmount: amount,
@@ -126,15 +129,13 @@ exports.applyGiftCard = functions.https.onCall(async (data, context) => {
   });
 });
 
-// ==================================================================
-// 3. REMOVE GIFT CARD
-// ==================================================================
+// =================================================================================
+// 3. REMOVE GIFT CARD (HTTPS Callable)
+// =================================================================================
 /**
- * Callable Function: Removes an applied gift card from the cart.
- * * Logic:
- * 1. Validates authentication.
- * 2. Uses a Transaction to restore the balance to the Gift Card.
- * 3. Removes the Gift Card metadata from the Cart and resets the final price.
+ * Callable Function: Removes a gift card from the cart.
+ * * Mechanism:
+ * Restores the deducted amount back to the Gift Card's balance and resets the cart totals.
  */
 exports.removeGiftCard = functions.https.onCall(async (data, context) => {
   if (!context.auth) throw new functions.https.HttpsError("unauthenticated", "Auth required.");
@@ -154,12 +155,12 @@ exports.removeGiftCard = functions.https.onCall(async (data, context) => {
     const gRef = db.collection("giftCards").doc(code);
     const gDoc = await t.get(gRef);
     
-    // Restore balance if the card document still exists
+    // Restore balance if card still exists
     if (gDoc.exists) {
       t.update(gRef, { balance: gDoc.data().balance + amt });
     }
 
-    // Reset cart fields
+    // Reset Cart
     t.update(cartRef, {
       giftCardAppliedAmount: admin.firestore.FieldValue.delete(),
       appliedGiftCardCode: admin.firestore.FieldValue.delete(),
@@ -170,23 +171,20 @@ exports.removeGiftCard = functions.https.onCall(async (data, context) => {
   });
 });
 
-// ==================================================================
-// 4. COMPLETE ORDER (INCLUDES STOCK MANAGEMENT)
-// ==================================================================
+// =================================================================================
+// 4. COMPLETE ORDER
+// =================================================================================
 /**
- * Callable Function: Finalizes the checkout process.
- * * Logic:
- * 1. Validates user and email.
- * 2. Starts a Firestore Transaction (Critical for stock management).
- * 3. Fetches Cart, Items, User Profile, and Products.
- * 4. **Stock Management**: Iterates through cart items, checks availability in 'products' collection.
- * - If stock is insufficient, throws an error and aborts transaction.
- * - If sufficient, deducts the quantity from the product stock.
- * 5. Creates the Order document with full details (items, address, financial breakdown).
- * 6. Clears the Cart (deletes items and resets metadata).
- * 7. Triggers the confirmation email via the 'mail' collection.
+ * Callable Function: Finalizes the order.
+ * * Mechanism:
+ * Uses a strict "Read-Before-Write" Transaction pattern to avoid Firestore "INTERNAL" errors.
+ * * Steps:
+ * 1. PHASE 1 (READS): Fetches User, Cart, Cart Items, and ALL referenced Products.
+ * 2. PHASE 2 (LOGIC): Iterates through items in memory to check availability and calculate new stock.
+ * 3. PHASE 3 (WRITES): Updates Product stocks, creates the Order, and deletes Cart content.
  */
 exports.completeOrder = functions.https.onCall(async (data, context) => {
+  // 1. Authentication Check
   if (!context.auth) throw new functions.https.HttpsError("unauthenticated", "Auth required.");
   const userId = context.auth.uid;
   const cartId = userId;
@@ -195,14 +193,17 @@ exports.completeOrder = functions.https.onCall(async (data, context) => {
   if (typeof email === 'string') email = email.trim();
   if (!email) throw new functions.https.HttpsError("invalid-argument", "Email required.");
 
-  // References
+  // Database References
   const userRef = db.collection("users").doc(userId);
   const cartRef = db.collection("carts").doc(cartId);
   const itemsRef = cartRef.collection("items");
   const productsRef = db.collection("products"); 
 
   return db.runTransaction(async (t) => {
-    // A. Read phase: Fetch all necessary documents first
+    // ---------------------------------------------------------
+    // PHASE 1: READ
+    // ---------------------------------------------------------
+    
     const cDoc = await t.get(cartRef);
     if (!cDoc.exists) throw new functions.https.HttpsError("not-found", "Cart empty.");
     
@@ -213,7 +214,7 @@ exports.completeOrder = functions.https.onCall(async (data, context) => {
     const uData = uDoc.exists ? uDoc.data() : {};
     const cData = cDoc.data();
 
-    // Construct Shipping Address from User Profile
+    // Prepare Address (Logic from old version)
     const address = {
         name: uData.name || '',
         surname: uData.surname || '',
@@ -222,58 +223,80 @@ exports.completeOrder = functions.https.onCall(async (data, context) => {
         postcode: uData.postcode || ''
     };
 
-    const items = [];
+    // LOAD PRODUCTS:
+    // We collect all unique Product IDs first to avoid duplicate reads inside the loop.
+    const productMap = {}; // Will hold { ref, data, currentStock }
     
-    // --- STOCK MANAGEMENT: Iterate to check and deduct stock ---
+    for (const doc of iSnaps.docs) {
+        const pid = doc.data().productId;
+        if (pid && !productMap[pid]) {
+            const pRef = productsRef.doc(pid);
+            const pSnap = await t.get(pRef); // Safe Read
+            
+            if (!pSnap.exists) throw new functions.https.HttpsError("not-found", `Product missing: ${pid}`);
+            
+            const pData = pSnap.data();
+            // Handle both field names for stock
+            const stock = (typeof pData.stock === 'number') ? pData.stock : (pData.productStock || 0);
+            
+            productMap[pid] = {
+                ref: pRef,
+                data: pData,
+                currentStock: stock // We will modify this in memory
+            };
+        }
+    }
+
+    // ---------------------------------------------------------
+    // PHASE 2: BUSINESS LOGIC (No Reads, No Writes)
+    // ---------------------------------------------------------
+    const finalItems = [];
+    
     for (const doc of iSnaps.docs) {
         const val = doc.data();
-        const productId = val.productId;
-        const quantity = (typeof val.quantity === 'number') ? val.quantity : 1;
-        const productName = val.productName || 'Unknown';
+        const pid = val.productId;
+        const qty = (typeof val.quantity === 'number') ? val.quantity : 1;
+        
+        // Retrieve loaded product data
+        const pInfo = productMap[pid];
+        if (!pInfo) continue; // Should not happen given Phase 1
 
-        // 1. Fetch Product Data within the transaction
-        if (!productId) throw new functions.https.HttpsError("data-loss", "Product ID missing in cart");
-        const productDocRef = productsRef.doc(productId);
-        const productSnapshot = await t.get(productDocRef);
-
-        if (!productSnapshot.exists) {
-            throw new functions.https.HttpsError("not-found", `Product not found: ${productName}`);
+        // Check Stock availability
+        if (pInfo.currentStock < qty) {
+            throw new functions.https.HttpsError("resource-exhausted", `Insufficient stock for ${pInfo.data.productName || 'product'}.`);
         }
 
-        const productData = productSnapshot.data();
-        // Support both 'stock' (preferred) and 'productStock' (legacy) fields
-        const currentStock = (typeof productData.stock === 'number') ? productData.stock : (productData.productStock || 0);
+        // Deduct from temporary memory (handles multiple rows of same product)
+        pInfo.currentStock -= qty;
 
-        // 2. Check Availability
-        if (currentStock < quantity) {
-            throw new functions.https.HttpsError("resource-exhausted", `Insufficient stock for ${productName}. Available: ${currentStock}`);
-        }
-
-        // 3. Deduct Stock
-        t.update(productDocRef, { stock: currentStock - quantity });
-
-        // 4. Add to local items array for the Order document
-        items.push({
-            productId: productId,
-            productName: productName,
+        finalItems.push({
+            productId: pid,
+            productName: pInfo.data.productName || val.productName || 'Unknown',
             productPrice: (typeof val.productPrice==='number') ? val.productPrice : 0,
-            quantity: quantity,
-            imageUrl: val.imageUrl || productData.imageUrl || null
+            quantity: qty,
+            imageUrl: val.imageUrl || pInfo.data.imageUrl || null
         });
     }
-    // -----------------------------------------------------------
 
-    // Calculate final financials
+    // ---------------------------------------------------------
+    // PHASE 3: WRITE
+    // ---------------------------------------------------------
+
+    // 1. Update Product Stocks in DB
+    Object.values(productMap).forEach(info => {
+        t.update(info.ref, { stock: info.currentStock });
+    });
+
+    // 2. Create Order Document
     const finalAmount = (typeof cData.finalAmountToPay==='number') ? cData.finalAmountToPay : (cData.totalPrice || 0);
     const orderId = `${userId}_${Date.now()}`;
     const orderRef = db.collection("orders").doc(orderId);
 
-    // Save Order Document
     t.set(orderRef, {
       orderId: orderId,
       userId: userId,
       customerEmail: email,
-      items: items,
+      items: finalItems,
       totalPrice: cData.totalPrice || 0,
       giftCardAppliedAmount: cData.giftCardAppliedAmount || 0,
       finalAmountPaid: finalAmount,
@@ -283,10 +306,10 @@ exports.completeOrder = functions.https.onCall(async (data, context) => {
       timestamp: admin.firestore.FieldValue.serverTimestamp(),
     });
 
-    // Cleanup: Delete cart items
+    // 3. Clear Cart Items
     iSnaps.forEach(d => t.delete(d.ref));
     
-    // Cleanup: Reset cart metadata
+    // 4. Reset Cart Metadata
     t.update(cartRef, {
         totalPrice: 0, 
         itemCount: 0,
@@ -296,37 +319,36 @@ exports.completeOrder = functions.https.onCall(async (data, context) => {
         lastUpdated: admin.firestore.FieldValue.serverTimestamp()
     });
 
-    // Email Trigger
+    // 5. Trigger Email (Write to 'mail' collection)
     if (email) {
         const prettyHtml = generateOrderEmailHtml({
             orderId: orderId,
             customerName: address.name || email.split('@')[0],
-            items: items,
+            items: finalItems,
             subtotal: cData.totalPrice || 0,
             discount: cData.giftCardAppliedAmount || 0,
             total: finalAmount
         });
         
         const mailRef = db.collection("mail").doc();
-        t.set(mailRef, { to: email, message: { subject: `Order Confirmation #${orderId}`, html: prettyHtml } });
+        t.set(mailRef, { 
+            to: email, 
+            message: { subject: `Order Confirmation #${orderId}`, html: prettyHtml } 
+        });
     }
 
     return { orderId: orderId, success: true };
   });
 });
 
-// ==================================================================
-// 5. ORDER STATUS MONITORING (SHIPPED / CANCELLED EMAILS)
-// ==================================================================
+// =================================================================================
+// 5. ORDER STATUS MONITORING (Background Trigger)
+// =================================================================================
 /**
- * Trigger: Firestore onUpdate event for orders.
- * Purpose: Monitors changes in the 'status' field of an order.
- * * Logic:
- * 1. Compares old status vs new status. Exits if unchanged.
- * 2. Checks if the new status is 'shipped' or 'cancelled'.
- * 3. Retrieves the customer email and name from the order document.
- * 4. Generates the appropriate HTML email template.
- * 5. Writes to the 'mail' collection to trigger the email delivery extension.
+ * Trigger: Firestore `onUpdate` event for orders.
+ * * Mechanism:
+ * Monitors the 'status' field. If it changes to 'shipped' or 'cancelled', 
+ * it sends a formatted HTML email to the customer.
  */
 exports.onOrderStatusChange = functions.firestore
   .document("orders/{orderId}")
@@ -341,7 +363,6 @@ exports.onOrderStatusChange = functions.firestore
     const orderId = context.params.orderId;
     const customerEmail = newData.customerEmail;
     
-    // Safe retrieval of customer name
     let customerName = "Customer";
     if (newData.shippingAddress && newData.shippingAddress.name) {
        customerName = newData.shippingAddress.name;
@@ -352,7 +373,6 @@ exports.onOrderStatusChange = functions.firestore
     let subject = "";
     let htmlContent = "";
 
-    // Determine template based on status
     if (newStatus === "shipped") {
       subject = `Your Order #${orderId} has been Shipped! 🚚`;
       htmlContent = generateShippingEmailHtml({
@@ -381,13 +401,10 @@ exports.onOrderStatusChange = functions.firestore
   });
 
 
-// ==================================================================
-// HELPER FUNCTIONS (EMAIL TEMPLATES)
-// ==================================================================
+// =================================================================================
+// HELPER FUNCTIONS (Email Templates)
+// =================================================================================
 
-/**
- * Generates the HTML for the Order Confirmation email.
- */
 function generateOrderEmailHtml(order) {
   const logoUrl = "https://via.placeholder.com/150x50?text=WebShop"; 
   const primaryColor = "#6200EA"; 
@@ -479,9 +496,6 @@ function generateOrderEmailHtml(order) {
   `;
 }
 
-/**
- * Generates the HTML for the Shipping Notification email.
- */
 function generateShippingEmailHtml(order) {
   const logoUrl = "https://via.placeholder.com/150x50?text=WebShop";
   const primaryColor = "#00C853"; 
@@ -511,9 +525,6 @@ function generateShippingEmailHtml(order) {
   </html>`;
 }
 
-/**
- * Generates the HTML for the Order Cancellation email.
- */
 function generateCancellationEmailHtml(order) {
   const logoUrl = "https://via.placeholder.com/150x50?text=WebShop";
   const primaryColor = "#D32F2F"; 

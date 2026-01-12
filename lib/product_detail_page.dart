@@ -14,6 +14,8 @@ import 'package:webshop/utils/constants.dart';
 import 'package:webshop/auth_page.dart';
 import 'package:webshop/widgets/custom_image.dart';
 import 'package:webshop/utils/ui_helper.dart';
+import 'package:webshop/providers/recommendations_provider.dart';
+import 'package:webshop/widgets/product_card.dart';
 
 /// A comprehensive screen displaying the full details of a specific product.
 ///
@@ -386,6 +388,76 @@ class _ProductDetailPageState extends ConsumerState<ProductDetailPage> {
     );
   }
 
+  /// Renders the AI / behavioral recommendations section.
+  Widget _buildRecommendationsSection() {
+    // Watch the integer state as a trigger to refresh recommendations.
+    ref.watch(recommendationsNotifierProvider);
+    final notifier = ref.read(recommendationsNotifierProvider.notifier);
+    final String? userId = FirebaseAuth.instance.currentUser?.uid;
+
+    return FutureBuilder<List<Product>>(
+      future: notifier.getAiPowered(userId: userId, seedProductId: widget.product.id, limit: 6),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const SizedBox(
+            height: 120,
+            child: Center(child: CircularProgressIndicator()),
+          );
+        }
+
+        if (snapshot.hasError) {
+          return Container(
+            padding: const EdgeInsets.all(12),
+            child: const Text('Could not load recommendations.'),
+          );
+        }
+
+        final suggestions = snapshot.data ?? [];
+
+        if (suggestions.isEmpty) {
+          return Container();
+        }
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'You might also like',
+              style: Theme.of(context)
+                  .textTheme
+                  .titleLarge
+                  ?.copyWith(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              height: 260,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: suggestions.length,
+                separatorBuilder: (_, __) => const SizedBox(width: 12),
+                itemBuilder: (context, index) {
+                  final p = suggestions[index];
+                  return SizedBox(
+                    width: 160,
+                    child: GestureDetector(
+                      onTap: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                              builder: (_) => ProductDetailPage(product: p)),
+                        );
+                      },
+                      child: ProductCard(product: p),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   /// Helper method to prompt anonymous users to log in.
   void _showLoginDialog() {
     showDialog(
@@ -696,6 +768,13 @@ class _ProductDetailPageState extends ConsumerState<ProductDetailPage> {
                   // 4. REVIEWS SECTION
                   // ==================================================================
                   _buildReviewsSection(),
+
+                  const SizedBox(height: 16),
+
+                  // ==================================================================
+                  // 5. RECOMMENDATIONS (AI-powered / Behavioral)
+                  // ==================================================================
+                  _buildRecommendationsSection(),
 
                   const SizedBox(height: 24), 
                 ],

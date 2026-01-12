@@ -30,9 +30,7 @@
 /// calculation errors, state management bugs, and business rule violations
 /// without requiring complex test infrastructure setup.
 
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:webshop/models/product.dart';
 import 'package:webshop/models/cart_item.dart';
 import 'package:webshop/models/order.dart';
@@ -40,7 +38,8 @@ import 'package:webshop/models/order.dart';
 /// Helper class to simulate checkout service behavior
 class MockCheckoutService {
   double calculateSubtotal(List<CartItem> items) {
-    return items.fold(0.0, (sum, item) => sum + (item.product.price * item.quantity));
+    return items.fold(
+        0.0, (sum, item) => sum + (item.product.price * item.quantity));
   }
 
   double applyGiftCard(double subtotal, double giftCardAmount) {
@@ -82,7 +81,7 @@ void main() {
 
   setUp(() {
     checkoutService = MockCheckoutService();
-    
+
     // Initialize test products
     testProducts = [
       Product(
@@ -92,6 +91,7 @@ void main() {
         price: 999.99,
         imageUrl: 'https://via.placeholder.com/150',
         stock: 5,
+        category: 'Electronics',
       ),
       Product(
         id: 'prod-2',
@@ -100,6 +100,7 @@ void main() {
         price: 29.99,
         imageUrl: 'https://via.placeholder.com/150',
         stock: 20,
+        category: 'Electronics',
       ),
       Product(
         id: 'prod-3',
@@ -108,6 +109,7 @@ void main() {
         price: 79.99,
         imageUrl: 'https://via.placeholder.com/150',
         stock: 0, // Out of stock
+        category: 'Electronics',
       ),
     ];
   });
@@ -116,7 +118,8 @@ void main() {
     test('Complete checkout flow with single product', () {
       // 1. User browses and selects product
       final product = testProducts[0]; // Laptop
-      expect(product.price, 999.99, reason: 'Product should have correct price');
+      expect(product.price, 999.99,
+          reason: 'Product should have correct price');
       expect(product.stock, greaterThan(0), reason: 'Product must be in stock');
 
       // 2. User adds product to cart
@@ -142,7 +145,8 @@ void main() {
         'city': 'Berlin',
         'postalCode': '10115',
       };
-      expect(shippingAddress, isNotEmpty, reason: 'Shipping address is required');
+      expect(shippingAddress, isNotEmpty,
+          reason: 'Shipping address is required');
 
       // 6. Create order
       final order = checkoutService.createOrder(
@@ -150,10 +154,14 @@ void main() {
         shippingAddress: shippingAddress,
       );
 
-      expect(order.orderId, isNotEmpty, reason: 'Order should have an order ID');
-      expect(order.totalPrice, subtotal, reason: 'Order subtotal should match calculated subtotal');
-      expect(order.finalAmountPaid, subtotal, reason: 'Final amount should match subtotal without discount');
-      expect(order.status, 'pending', reason: 'New order should have pending status');
+      expect(order.orderId, isNotEmpty,
+          reason: 'Order should have an order ID');
+      expect(order.totalPrice, subtotal,
+          reason: 'Order subtotal should match calculated subtotal');
+      expect(order.finalAmountPaid, subtotal,
+          reason: 'Final amount should match subtotal without discount');
+      expect(order.status, 'pending',
+          reason: 'New order should have pending status');
       expect(order.items.length, 1, reason: 'Order should contain 1 cart item');
     });
 
@@ -161,16 +169,19 @@ void main() {
       // Create cart with multiple products
       final cartItems = [
         CartItem(id: 'cart-1', product: testProducts[0], quantity: 1), // Laptop
-        CartItem(id: 'cart-2', product: testProducts[1], quantity: 3), // Mouse x3
+        CartItem(
+            id: 'cart-2', product: testProducts[1], quantity: 3), // Mouse x3
       ];
 
       // Calculate subtotal: (999.99 * 1) + (29.99 * 3) = 1089.96
       final subtotal = checkoutService.calculateSubtotal(cartItems);
-      expect(subtotal, closeTo(1089.96, 0.01), reason: 'Subtotal calculation must be accurate');
+      expect(subtotal, closeTo(1089.96, 0.01),
+          reason: 'Subtotal calculation must be accurate');
 
       // Validate stock
       final stockValid = checkoutService.validateStock(cartItems);
-      expect(stockValid, true, reason: 'All products should have sufficient stock');
+      expect(stockValid, true,
+          reason: 'All products should have sufficient stock');
 
       // Create order
       final order = checkoutService.createOrder(
@@ -182,24 +193,34 @@ void main() {
         },
       );
 
-      expect(order.items.length, 2, reason: 'Order should contain 2 different products');
-      expect(order.totalPrice, closeTo(1089.96, 0.01), reason: 'Order subtotal must match calculated subtotal');
-      expect(order.finalAmountPaid, closeTo(1089.96, 0.01), reason: 'Final amount should match subtotal without discount');
+      expect(order.items.length, 2,
+          reason: 'Order should contain 2 different products');
+      expect(order.totalPrice, closeTo(1089.96, 0.01),
+          reason: 'Order subtotal must match calculated subtotal');
+      expect(order.finalAmountPaid, closeTo(1089.96, 0.01),
+          reason: 'Final amount should match subtotal without discount');
     });
 
     test('Checkout with gift card discount applied', () {
       final cartItems = [
-        CartItem(id: 'cart-1', product: testProducts[0], quantity: 1), // Laptop: 999.99
+        CartItem(
+            id: 'cart-1',
+            product: testProducts[0],
+            quantity: 1), // Laptop: 999.99
       ];
 
       final subtotal = checkoutService.calculateSubtotal(cartItems);
-      expect(subtotal, 999.99, reason: 'Subtotal should be calculated correctly');
+      expect(subtotal, 999.99,
+          reason: 'Subtotal should be calculated correctly');
 
       // Apply gift card
       final giftCardAmount = 100.0;
-      final totalAfterDiscount = checkoutService.applyGiftCard(subtotal, giftCardAmount);
-      expect(totalAfterDiscount, 899.99, reason: 'Gift card discount should be applied');
-      expect(totalAfterDiscount, lessThan(subtotal), reason: 'Total must be less than subtotal after discount');
+      final totalAfterDiscount =
+          checkoutService.applyGiftCard(subtotal, giftCardAmount);
+      expect(totalAfterDiscount, 899.99,
+          reason: 'Gift card discount should be applied');
+      expect(totalAfterDiscount, lessThan(subtotal),
+          reason: 'Total must be less than subtotal after discount');
 
       // Create order with gift card
       final order = checkoutService.createOrder(
@@ -213,15 +234,23 @@ void main() {
         giftCardCode: 'GIFT100',
       );
 
-      expect(order.giftCardAppliedAmount, 100.0, reason: 'Order should record gift card discount');
-      expect(order.finalAmountPaid, 899.99, reason: 'Final amount should reflect gift card discount');
-      expect(order.totalPrice, 999.99, reason: 'Subtotal should remain unchanged');
-      expect(order.appliedGiftCardCode, 'GIFT100', reason: 'Gift card code should be recorded');
+      expect(order.giftCardAppliedAmount, 100.0,
+          reason: 'Order should record gift card discount');
+      expect(order.finalAmountPaid, 899.99,
+          reason: 'Final amount should reflect gift card discount');
+      expect(order.totalPrice, 999.99,
+          reason: 'Subtotal should remain unchanged');
+      expect(order.appliedGiftCardCode, 'GIFT100',
+          reason: 'Gift card code should be recorded');
     });
 
-    test('Gift card exceeding subtotal should only discount up to subtotal', () {
+    test('Gift card exceeding subtotal should only discount up to subtotal',
+        () {
       final cartItems = [
-        CartItem(id: 'cart-1', product: testProducts[1], quantity: 1), // Mouse: 29.99
+        CartItem(
+            id: 'cart-1',
+            product: testProducts[1],
+            quantity: 1), // Mouse: 29.99
       ];
 
       final subtotal = checkoutService.calculateSubtotal(cartItems);
@@ -229,8 +258,10 @@ void main() {
 
       // Apply gift card worth more than subtotal
       final giftCardAmount = 50.0;
-      final totalAfterDiscount = checkoutService.applyGiftCard(subtotal, giftCardAmount);
-      expect(totalAfterDiscount, 0.0, reason: 'Total should be 0 when gift card exceeds subtotal');
+      final totalAfterDiscount =
+          checkoutService.applyGiftCard(subtotal, giftCardAmount);
+      expect(totalAfterDiscount, 0.0,
+          reason: 'Total should be 0 when gift card exceeds subtotal');
 
       // Create order
       final order = checkoutService.createOrder(
@@ -244,52 +275,70 @@ void main() {
         giftCardCode: 'GIFT50',
       );
 
-      expect(order.finalAmountPaid, 0.0, reason: 'Order should be free after full discount');
-      expect(order.giftCardAppliedAmount, subtotal, reason: 'Should only discount actual subtotal amount');
-      expect(order.totalPrice, subtotal, reason: 'Subtotal should remain unchanged');
+      expect(order.finalAmountPaid, 0.0,
+          reason: 'Order should be free after full discount');
+      expect(order.giftCardAppliedAmount, subtotal,
+          reason: 'Should only discount actual subtotal amount');
+      expect(order.totalPrice, subtotal,
+          reason: 'Subtotal should remain unchanged');
     });
 
     test('Stock validation prevents overselling', () {
       final cartItems = [
-        CartItem(id: 'cart-1', product: testProducts[0], quantity: 10), // Laptop stock: 5
+        CartItem(
+            id: 'cart-1',
+            product: testProducts[0],
+            quantity: 10), // Laptop stock: 5
       ];
 
       final stockValid = checkoutService.validateStock(cartItems);
-      expect(stockValid, false, reason: 'Validation should fail when quantity exceeds stock');
-      expect(testProducts[0].stock, lessThan(10), reason: 'Available stock should be less than requested');
+      expect(stockValid, false,
+          reason: 'Validation should fail when quantity exceeds stock');
+      expect(testProducts[0].stock, lessThan(10),
+          reason: 'Available stock should be less than requested');
     });
 
     test('Stock validation with multiple products (mixed availability)', () {
       final cartItems = [
-        CartItem(id: 'cart-1', product: testProducts[0], quantity: 2), // Laptop: OK (stock: 5)
-        CartItem(id: 'cart-2', product: testProducts[1], quantity: 25), // Mouse: FAIL (stock: 20)
+        CartItem(
+            id: 'cart-1',
+            product: testProducts[0],
+            quantity: 2), // Laptop: OK (stock: 5)
+        CartItem(
+            id: 'cart-2',
+            product: testProducts[1],
+            quantity: 25), // Mouse: FAIL (stock: 20)
       ];
 
       final stockValid = checkoutService.validateStock(cartItems);
-      expect(stockValid, false, reason: 'Validation should fail if any product exceeds stock');
+      expect(stockValid, false,
+          reason: 'Validation should fail if any product exceeds stock');
     });
 
     test('Cannot checkout with out-of-stock product', () {
       final outOfStockProduct = testProducts[2]; // Keyboard with stock: 0
-      expect(outOfStockProduct.stock, 0, reason: 'Test product should be out of stock');
+      expect(outOfStockProduct.stock, 0,
+          reason: 'Test product should be out of stock');
 
       final cartItems = [
         CartItem(id: 'cart-1', product: outOfStockProduct, quantity: 1),
       ];
 
       final stockValid = checkoutService.validateStock(cartItems);
-      expect(stockValid, false, reason: 'Cannot checkout with out-of-stock items');
+      expect(stockValid, false,
+          reason: 'Cannot checkout with out-of-stock items');
     });
 
     test('Empty cart cannot be checked out', () {
       final emptyCart = <CartItem>[];
-      
+
       final subtotal = checkoutService.calculateSubtotal(emptyCart);
       expect(subtotal, 0.0, reason: 'Empty cart should have zero subtotal');
 
       // Validation should technically pass (no stock issues)
       final stockValid = checkoutService.validateStock(emptyCart);
-      expect(stockValid, true, reason: 'Stock validation passes for empty cart (no items to check)');
+      expect(stockValid, true,
+          reason: 'Stock validation passes for empty cart (no items to check)');
     });
 
     test('Price calculations handle decimals correctly', () {
@@ -300,6 +349,7 @@ void main() {
         price: 19.99,
         imageUrl: 'https://via.placeholder.com/150',
         stock: 10,
+        category: 'General',
       );
 
       final cartItems = [
@@ -307,8 +357,10 @@ void main() {
       ];
 
       final total = checkoutService.calculateSubtotal(cartItems);
-      expect(total, closeTo(59.97, 0.01), reason: 'Decimal multiplication should be accurate');
-      expect(total.toStringAsFixed(2), '59.97', reason: 'Price should format to 2 decimal places');
+      expect(total, closeTo(59.97, 0.01),
+          reason: 'Decimal multiplication should be accurate');
+      expect(total.toStringAsFixed(2), '59.97',
+          reason: 'Price should format to 2 decimal places');
     });
 
     test('Order status transitions follow valid workflow', () {
@@ -321,43 +373,50 @@ void main() {
       };
 
       // Validate allowed transitions
-      expect(validTransitions['pending'], contains('processing'), 
+      expect(validTransitions['pending'], contains('processing'),
           reason: 'Pending order can move to processing');
-      expect(validTransitions['pending'], contains('cancelled'), 
+      expect(validTransitions['pending'], contains('cancelled'),
           reason: 'Pending order can be cancelled');
-      expect(validTransitions['processing'], contains('shipped'), 
+      expect(validTransitions['processing'], contains('shipped'),
           reason: 'Processing order can be shipped');
-      expect(validTransitions['shipped'], contains('delivered'), 
+      expect(validTransitions['shipped'], contains('delivered'),
           reason: 'Shipped order can be marked as delivered');
-      
+
       // Validate terminal states
-      expect(validTransitions['delivered'], isEmpty, 
+      expect(validTransitions['delivered'], isEmpty,
           reason: 'Delivered is a terminal state with no transitions');
-      expect(validTransitions['cancelled'], isEmpty, 
+      expect(validTransitions['cancelled'], isEmpty,
           reason: 'Cancelled is a terminal state with no transitions');
     });
 
     test('Large quantity order calculation accuracy', () {
       final cartItems = [
-        CartItem(id: 'cart-1', product: testProducts[1], quantity: 20), // Mouse at 29.99 each
+        CartItem(
+            id: 'cart-1',
+            product: testProducts[1],
+            quantity: 20), // Mouse at 29.99 each
       ];
 
       final subtotal = checkoutService.calculateSubtotal(cartItems);
-      expect(subtotal, closeTo(599.80, 0.01), reason: 'Large quantity calculation should be accurate');
-      
+      expect(subtotal, closeTo(599.80, 0.01),
+          reason: 'Large quantity calculation should be accurate');
+
       final stockValid = checkoutService.validateStock(cartItems);
-      expect(stockValid, true, reason: 'Stock should be sufficient for exact stock quantity');
+      expect(stockValid, true,
+          reason: 'Stock should be sufficient for exact stock quantity');
     });
 
     test('Mixed currency precision with multiple products', () {
       final cartItems = [
         CartItem(id: 'cart-1', product: testProducts[0], quantity: 1), // 999.99
-        CartItem(id: 'cart-2', product: testProducts[1], quantity: 2), // 29.99 * 2
+        CartItem(
+            id: 'cart-2', product: testProducts[1], quantity: 2), // 29.99 * 2
       ];
 
       final subtotal = checkoutService.calculateSubtotal(cartItems);
       // Expected: 999.99 + 59.98 = 1059.97
-      expect(subtotal, closeTo(1059.97, 0.01), reason: 'Mixed product prices should calculate correctly');
+      expect(subtotal, closeTo(1059.97, 0.01),
+          reason: 'Mixed product prices should calculate correctly');
     });
 
     test('Order creation includes all required fields', () {
@@ -378,15 +437,22 @@ void main() {
 
       // Validate all order fields
       expect(order.id, isNotEmpty, reason: 'Order must have an ID');
-      expect(order.orderId, isNotEmpty, reason: 'Order must have a user-facing order ID');
+      expect(order.orderId, isNotEmpty,
+          reason: 'Order must have a user-facing order ID');
       expect(order.items, isNotEmpty, reason: 'Order must contain items');
-      expect(order.totalPrice, greaterThanOrEqualTo(0), reason: 'Subtotal must be non-negative');
-      expect(order.finalAmountPaid, greaterThanOrEqualTo(0), reason: 'Final amount must be non-negative');
+      expect(order.totalPrice, greaterThanOrEqualTo(0),
+          reason: 'Subtotal must be non-negative');
+      expect(order.finalAmountPaid, greaterThanOrEqualTo(0),
+          reason: 'Final amount must be non-negative');
       expect(order.status, isNotEmpty, reason: 'Order must have a status');
-      expect(order.timestamp, isNotNull, reason: 'Order must have creation timestamp');
-      expect(order.shippingAddress, isNotEmpty, reason: 'Order must have shipping address');
-      expect(order.giftCardAppliedAmount, 50.0, reason: 'Gift card discount should be recorded');
-      expect(order.appliedGiftCardCode, 'SAVE50', reason: 'Gift card code should be recorded');
+      expect(order.timestamp, isNotNull,
+          reason: 'Order must have creation timestamp');
+      expect(order.shippingAddress, isNotEmpty,
+          reason: 'Order must have shipping address');
+      expect(order.giftCardAppliedAmount, 50.0,
+          reason: 'Gift card discount should be recorded');
+      expect(order.appliedGiftCardCode, 'SAVE50',
+          reason: 'Gift card code should be recorded');
     });
   });
 }

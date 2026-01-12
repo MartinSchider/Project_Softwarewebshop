@@ -1,6 +1,5 @@
 // lib/repositories/wishlist_repository.dart
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:webshop/models/product.dart';
 
 /// Handles data operations for the user's wishlist in Firestore.
 ///

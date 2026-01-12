@@ -197,13 +197,23 @@ class IntentPatternsConfig {
         'allgemein',
         'accessories',
         'zubehör'
+        'home',
+        'haus',
+        'beauty',
+        'schönheit',
+        'sports',
+        'sport',
+        'gadget',
+        'geräte',
+        'music',
+        'musik',
       ],
       patterns: [
         // Direct category mentions with action words
         RegExp(
             r'(show|list|zeig|liste|display).*(electronics|food|clothing|general|elektronik|lebensmittel|kleidung|allgemein)'),
         RegExp(
-            r'(electronics|food|clothing|general|elektronik|lebensmittel|kleidung|allgemein).*(items|products|produkte|artikel)'),
+            r'(electronics|food|clothing|general|home|beauty|sports|gadget|music).*(items|products|produkte|artikel)'),
         // Category questions
         RegExp(
             r'(what|was|which|welche).*(in|im|in der).*(category|kategorie)'),
@@ -214,6 +224,11 @@ class IntentPatternsConfig {
         RegExp(r'\b(food|lebensmittel|essen)\b'),
         RegExp(r'\b(clothing|kleidung)\b'),
         RegExp(r'\b(general|allgemein)\b'),
+        RegExp(r'\b(home|haus)\b'),
+        RegExp(r'\b(beauty|schönheit)\b'),
+        RegExp(r'\b(sports|sport)\b'),
+        RegExp(r'\b(gadget|geräte)\b'),
+        RegExp(r'\b(music|musik)\b'),
       ],
       priority: 2,
     ),

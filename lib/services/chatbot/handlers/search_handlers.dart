@@ -77,7 +77,7 @@ class SearchHandlers {
       // Show available categories
       final categories = products.map((p) => p.category).toSet().toList()
         ..sort();
-      return 'I couldn\'t identify the category. Available categories are:\n\n'
+      return 'I couldn\'t identify the category, or there are no products in this category. Available categories are:\n\n'
           '${categories.map((c) => '• $c').join('\n')}\n\n'
           'Try asking like: "Show electronics" or "List food items"';
     }

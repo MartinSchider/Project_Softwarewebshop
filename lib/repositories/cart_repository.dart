@@ -9,7 +9,10 @@ import 'package:webshop/models/product.dart';
 /// `carts` collection. It abstracts the complexity of NoSQL data joining
 /// (merging cart items with product details) away from the UI and Service layers.
 class CartRepository {
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final FirebaseFirestore _firestore;
+
+  /// Allows injecting a [FirebaseFirestore] instance for testing (emulator/mocks).
+  CartRepository({FirebaseFirestore? firestore}) : _firestore = firestore ?? FirebaseFirestore.instance;
 
   /// Returns a real-time stream of items in the user's cart.
   ///
