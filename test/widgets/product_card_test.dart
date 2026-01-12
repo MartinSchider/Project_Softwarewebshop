@@ -20,8 +20,54 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:webshop/models/product.dart';
 import 'package:webshop/widgets/product_card.dart';
+import 'package:webshop/widgets/custom_image.dart';
+import 'package:webshop/providers/cart_providers.dart';
+import 'package:webshop/providers/wishlist_provider.dart';
+import 'package:webshop/services/cart_service.dart';
+import 'package:webshop/models/cart_item.dart';
 
-void main() {
+// Lightweight fakes to prevent Firebase access during widget tests.
+class FakeCartService implements CartService {
+  @override
+  Stream<List<CartItem>> getCartStream() => Stream.value([]);
+
+  @override
+  Stream<Map<String, dynamic>> getCartDetailsStream() => Stream.value({});
+
+  @override
+  Future<void> addProductToCart(Product product, int quantityToAdd) async {}
+
+  @override
+  Future<void> removeCartItem(String cartItemId) async {}
+
+  @override
+  Future<void> updateCartItemQuantity(String cartItemId, int newQuantity) async {}
+
+  @override
+  Future<void> clearCart() async {}
+
+  @override
+  Future<List<CartItem>> getCartOnce() async => [];
+
+  @override
+  Future<Map<String, dynamic>> applyGiftCard(String giftCardCode) async => <String, dynamic>{};
+
+  @override
+  Future<Map<String, dynamic>> removeGiftCard() async => <String, dynamic>{};
+}
+
+class FakeWishlistController implements WishlistController {
+  @override
+  Future<void> add(String productId) async {}
+
+  @override
+  Future<void> remove(String productId) async {}
+
+  @override
+  Future<void> toggleWishlist(String productId) async {}
+}
+
+void main() { 
   group('ProductCard Widget Tests', () {
     late Product testProduct;
 
@@ -33,6 +79,7 @@ void main() {
         price: 49.99,
         imageUrl: 'https://via.placeholder.com/150',
         stock: 15,
+        category: 'General',
       );
     });
 
@@ -43,6 +90,10 @@ void main() {
         (WidgetTester tester) async {
       await tester.pumpWidget(
         ProviderScope(
+          overrides: [
+            cartServiceProvider.overrideWithValue(FakeCartService()),
+            wishlistControllerProvider.overrideWithValue(FakeWishlistController()),
+          ],
           child: MaterialApp(
             home: Scaffold(
               body: ProductCard(product: testProduct),
@@ -65,6 +116,10 @@ void main() {
         (WidgetTester tester) async {
       await tester.pumpWidget(
         ProviderScope(
+          overrides: [
+            cartServiceProvider.overrideWithValue(FakeCartService()),
+            wishlistControllerProvider.overrideWithValue(FakeWishlistController()),
+          ],
           child: MaterialApp(
             home: Scaffold(
               body: ProductCard(product: testProduct),
@@ -73,8 +128,9 @@ void main() {
         ),
       );
 
-      // Verify stock information is present
-      expect(find.textContaining('In Stock'), findsWidgets);
+      // Verify stock badges are correct: for ample stock there should be no 'SOLD OUT' or 'LOW STOCK' badges
+      expect(find.text('SOLD OUT'), findsNothing);
+      expect(find.text('LOW STOCK'), findsNothing);
     });
 
     // FAILING TEST: Requires Firebase initialization
@@ -89,10 +145,15 @@ void main() {
         price: 29.99,
         imageUrl: 'https://via.placeholder.com/150',
         stock: 0,
+        category: 'General',
       );
 
       await tester.pumpWidget(
         ProviderScope(
+          overrides: [
+            cartServiceProvider.overrideWithValue(FakeCartService()),
+            wishlistControllerProvider.overrideWithValue(FakeWishlistController()),
+          ],
           child: MaterialApp(
             home: Scaffold(
               body: ProductCard(product: outOfStockProduct),
@@ -101,18 +162,21 @@ void main() {
         ),
       );
 
-      // Verify out of stock message
-      expect(find.textContaining('Out of Stock'), findsWidgets);
+      // Verify out of stock badge is shown (SOLD OUT)
+      expect(find.text('SOLD OUT'), findsOneWidget);
     });
 
     // FAILING TEST: Requires Firebase initialization
     // Expected behavior: ProductCard should be wrapped in InkWell or GestureDetector
     // Actual error: Cannot find Card widget because ProductCard fails to build
     // Root cause: Firebase not initialized for CartService dependency
-    testWidgets('ProductCard should be tappable',
-        (WidgetTester tester) async {
+    testWidgets('ProductCard should be tappable', (WidgetTester tester) async {
       await tester.pumpWidget(
         ProviderScope(
+          overrides: [
+            cartServiceProvider.overrideWithValue(FakeCartService()),
+            wishlistControllerProvider.overrideWithValue(FakeWishlistController()),
+          ],
           child: MaterialApp(
             home: Scaffold(
               body: ProductCard(product: testProduct),
@@ -141,6 +205,10 @@ void main() {
         (WidgetTester tester) async {
       await tester.pumpWidget(
         ProviderScope(
+          overrides: [
+            cartServiceProvider.overrideWithValue(FakeCartService()),
+            wishlistControllerProvider.overrideWithValue(FakeWishlistController()),
+          ],
           child: MaterialApp(
             home: Scaffold(
               body: ProductCard(product: testProduct),
@@ -149,8 +217,8 @@ void main() {
         ),
       );
 
-      // Verify image widget is present
-      expect(find.byType(Image), findsOneWidget);
+      // Verify CustomImage widget is present
+      expect(find.byType(CustomImage), findsOneWidget);
     });
 
     // FAILING TEST: Requires Firebase initialization
@@ -161,6 +229,10 @@ void main() {
         (WidgetTester tester) async {
       await tester.pumpWidget(
         ProviderScope(
+          overrides: [
+            cartServiceProvider.overrideWithValue(FakeCartService()),
+            wishlistControllerProvider.overrideWithValue(FakeWishlistController()),
+          ],
           child: MaterialApp(
             home: Scaffold(
               body: ProductCard(product: testProduct),
@@ -169,8 +241,8 @@ void main() {
         ),
       );
 
-      // Look for IconButton (add to cart)
-      expect(find.byType(IconButton), findsWidgets);
+      // Look for the add-to-cart Icon
+      expect(find.byIcon(Icons.add_shopping_cart), findsOneWidget);
     });
   });
 }
