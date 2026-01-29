@@ -16,7 +16,7 @@ import 'package:webshop/utils/constants.dart'; // Import constants for consisten
 /// * **Profile Overview**: Displays basic user info (Email).
 /// * **Order History**: Link to past purchases.
 /// * **Wishlist**: Link to saved favorite items.
-/// * **Fidelity Program**: Access to the digital loyalty card.
+/// * **Fidelity Program**: Access to the digital fidelity card.
 /// * **Admin Tools**: Conditionally rendered link for administrators.
 class CustomerAreaPage extends StatelessWidget {
   const CustomerAreaPage({super.key});
@@ -27,9 +27,7 @@ class CustomerAreaPage extends StatelessWidget {
     final user = FirebaseAuth.instance.currentUser;
     final AuthService authService = AuthService();
 
-    // Safety Check: Although this page should be protected by upstream navigation logic,
-    // this guard prevents crashes if the user session becomes invalid.
-    if (user == null) {
+      if (user == null) {
       return Scaffold(
         appBar: AppBar(title: const Text('Personal Area')),
         body: const Center(child: Text('Please log in.')),
@@ -53,7 +51,7 @@ class CustomerAreaPage extends StatelessWidget {
         ],
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(defaultPadding), // Use constant padding
+        padding: const EdgeInsets.all(defaultPadding),
         child: Column(
           children: [
             // ==================================================================
@@ -61,7 +59,7 @@ class CustomerAreaPage extends StatelessWidget {
             // ==================================================================
             const CircleAvatar(
               radius: 40,
-              backgroundColor: lightGreyColor, // Use constant color
+              backgroundColor: lightGreyColor,
               child: Icon(Icons.person, size: 50, color: Colors.grey),
             ),
             const SizedBox(height: defaultPadding),
@@ -172,8 +170,7 @@ class CustomerAreaPage extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            // Icon container with colored background tint
-            Container(
+             Container(
               padding: const EdgeInsets.all(defaultPadding),
               decoration: BoxDecoration(
                   color: color.withOpacity(0.1), shape: BoxShape.circle),

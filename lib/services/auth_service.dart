@@ -41,9 +41,6 @@ class AuthService {
         password: password,
       );
 
-      // CRITICAL: Immediately create the user profile in Firestore.
-      // If we skip this, the user would be logged in but accessing the checkout
-      // or profile pages would fail because the database document wouldn't exist.
       if (userCredential.user != null) {
         await _userRepository.saveUserProfile(
           userCredential.user!.uid,

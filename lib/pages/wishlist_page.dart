@@ -45,7 +45,7 @@ class WishlistPage extends ConsumerWidget {
           // ==================================================================
           // EMPTY STATE
           // ==================================================================
-          // Display a friendly placeholder if the user hasn't saved any items.
+          // Display a placeholder if the user hasn't saved any items.
           if (ids.isEmpty) {
             return Center(
               child: Column(
@@ -71,8 +71,6 @@ class WishlistPage extends ConsumerWidget {
           // DATA FILTERING
           // ==================================================================
           // Match the fetched IDs against the globally loaded products.
-          // Note: In a production app with pagination, this might require fetching
-          // specific missing IDs from the server if they aren't in the current 'productsState'.
           final wishlistProducts =
               productsState.products.where((p) => ids.contains(p.id)).toList();
 

@@ -57,11 +57,9 @@ class ProductRepository {
 
   /// Retrieves the full details of a specific product by its unique [id].
   ///
-  /// **Optimization Strategy:**
   /// 1. **Cache Check:** First, it checks if the product is already in `_memoryCache`.
   /// 2. **Network Request:** If not found, it fetches the document from Firestore.
   /// 3. **Cache Update:** On success, it stores the result in the cache for future use.
-  ///
   /// Returns `null` if the product does not exist or an error occurs.
   Future<Product?> getProductById(String id) async {
     // 1. Check Cache
@@ -113,12 +111,8 @@ class ProductRepository {
     }
   }
 
-  /// A simple text search fallback for cases where more advanced full-text
-  /// capabilities are not available. This performs a client-side filter on
-  /// a bounded set of documents and should be used sparingly for small result sets.
   Future<List<Product>> searchProductsByText(String queryText, {int limit = 50}) async {
     try {
-      // Basic optimization: fetch a limited page and filter locally.
       final snapshot = await _firestore
           .collection('products')
           .orderBy('productName')

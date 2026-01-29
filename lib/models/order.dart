@@ -85,8 +85,7 @@ class Order {
           // We explicitly set stock to 0 because this is a historical record.
           stock: 0,
 
-          // FIX: Added 'category' parameter which is now required by the Product model.
-          // We try to read it from history, otherwise default to 'General'.
+          // We try to read the category from history, otherwise default to 'General'.
           category: itemData['category'] ?? 'General',
         ),
         quantity: itemData['quantity'] as int? ?? 0,

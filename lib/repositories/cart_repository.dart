@@ -76,7 +76,7 @@ class CartRepository {
     // if the document already exists.
     await cartRef.set({'ownerUID': userId}, SetOptions(merge: true));
 
-    // CRITICAL UPDATE: We now save the full product details (snapshot).
+    // We now save the full product details (snapshot).
     // This allows Cloud Functions to read the name/price for emails
     // without needing to query the 'products' collection again.
     await itemRef.set({
@@ -102,7 +102,6 @@ class CartRepository {
 
   /// Updates the total price and item count in the parent cart document.
   ///
-  /// **Why is this needed?**
   /// While the app calculates totals locally for UI speed, we MUST sync these
   /// totals to the database so that Cloud Functions (like Gift Card validation)
   /// can read the correct amount server-side.

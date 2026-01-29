@@ -64,7 +64,6 @@ class AdminDashboardPage extends ConsumerWidget {
           'Admin Dashboard',
           style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
         ),
-        // MODIFICA: Uso il colore primario (verde) invece del nero
         backgroundColor: Theme.of(context).primaryColor,
         // We strictly define the icon color to ensure visibility against the dark app bar.
         iconTheme: const IconThemeData(color: Colors.white),

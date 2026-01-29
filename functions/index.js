@@ -214,7 +214,7 @@ exports.completeOrder = functions.https.onCall(async (data, context) => {
     const uData = uDoc.exists ? uDoc.data() : {};
     const cData = cDoc.data();
 
-    // Prepare Address (Logic from old version)
+    // Prepare Address
     const address = {
         name: uData.name || '',
         surname: uData.surname || '',
@@ -236,13 +236,12 @@ exports.completeOrder = functions.https.onCall(async (data, context) => {
             if (!pSnap.exists) throw new functions.https.HttpsError("not-found", `Product missing: ${pid}`);
             
             const pData = pSnap.data();
-            // Handle both field names for stock
             const stock = (typeof pData.stock === 'number') ? pData.stock : (pData.productStock || 0);
             
             productMap[pid] = {
                 ref: pRef,
                 data: pData,
-                currentStock: stock // We will modify this in memory
+                currentStock: stock
             };
         }
     }

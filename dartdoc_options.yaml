@@ -1,0 +1,5 @@
+dartdoc:
+  exclude:
+    - firebase_options.dart
+  includeExternal: false
+  showWarnings: false
