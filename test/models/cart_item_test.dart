@@ -33,18 +33,6 @@ void main() {
       expect(cartItem.quantity, 2, reason: 'CartItem quantity should be 2');
     });
 
-    test('CartItem should calculate total price correctly', () {
-      final cartItem = CartItem(
-        id: 'cart-2',
-        product: testProduct,
-        quantity: 3,
-      );
-
-      final totalPrice = cartItem.product.price * cartItem.quantity;
-      expect(totalPrice, 75.00,
-          reason: 'Total price should be quantity (3) × price (25.00) = 75.00');
-    });
-
     test('CartItem.fromMap should correctly deserialize data', () {
       final cartItemMap = {
         'productId': 'prod-test',

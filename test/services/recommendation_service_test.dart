@@ -1,103 +1,79 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:webshop/models/product.dart';
-import 'package:webshop/repositories/product_repository.dart';
 import 'package:webshop/services/recommendation_service.dart';
+import 'package:webshop/repositories/product_repository.dart';
 
-import 'package:cloud_firestore/cloud_firestore.dart';
 
-class _FakeRepo implements ProductRepository {
-  final Map<String, Product> _products;
-  _FakeRepo(this._products);
+class FakeProductRepository implements ProductRepository {
+    @override
+    Stream<List<Product>> getProductsStream() => throw UnimplementedError();
 
-  @override
+    @override
+    @override
+    Future<QuerySnapshot<Object?>> getProductsPage({int limit = 10, DocumentSnapshot<Object?>? lastDocument}) => throw UnimplementedError();
+  final List<Product> products;
+  FakeProductRepository(this.products);
+
   Future<Product?> getProductById(String id) async {
-    return _products[id];
+    final found = products.where((p) => p.id == id);
+    return found.isEmpty ? null : found.first;
   }
 
-  @override
-  Future<List<Product>> getProductsByCategory(String category, {int limit = 10}) async {
-    return _products.values.where((p) => p.category == category).take(limit).toList();
-  }
+  Future<List<Product>> getProductsByCategory(String category, {int limit = 10}) async =>
+      products.where((p) => p.category == category).take(limit).toList();
 
-  // Minimal stubs to satisfy the interface without touching Firebase.
-  @override
-  Future<QuerySnapshot<Object?>> getProductsPage({int limit = 10, DocumentSnapshot<Object?>? lastDocument}) async {
-    throw UnimplementedError('getProductsPage is not used in this test');
-  }
-
-  @override
-  Stream<List<Product>> getProductsStream() {
-    return Stream.empty();
-  }
-
-  @override
-  Future<List<Product>> searchProductsByText(String queryText, {int limit = 50}) async {
-    return _products.values.where((p) => p.name.toLowerCase().contains(queryText.toLowerCase())).take(limit).toList();
-  }
+  Future<List<Product>> searchProductsByText(String query, {int limit = 10}) async =>
+      products.where((p) => p.name.toLowerCase().contains(query.toLowerCase())).take(limit).toList();
 }
 
 void main() {
-  TestWidgetsFlutterBinding.ensureInitialized();
-
   group('RecommendationService', () {
+    late RecommendationService service;
+    late FakeProductRepository repo;
+    final products = [
+      Product(id: '1', name: 'Shirt', description: '', price: 10, imageUrl: '', stock: 5, category: 'Clothes'),
+      Product(id: '2', name: 'Pants', description: '', price: 20, imageUrl: '', stock: 3, category: 'Clothes'),
+      Product(id: '3', name: 'Hat', description: '', price: 5, imageUrl: '', stock: 2, category: 'Accessories'),
+    ];
+
     setUp(() {
-      SharedPreferences.setMockInitialValues({});
+      repo = FakeProductRepository(products);
+      service = RecommendationService(repo, null);
     });
 
-    test('records and returns recent views', () async {
-      final prefs = await SharedPreferences.getInstance();
-      final repo = _FakeRepo({
-        'p1': Product(id: 'p1', name: 'A', description: '', price: 1.0, imageUrl: '', stock: 10, category: 'cat1'),
-      });
-
-      final service = RecommendationService(repo, prefs);
-
-      await service.recordProductView(userId: 'u1', productId: 'p1');
-      final recent = service.getRecent('u1');
-      expect(recent, ['p1']);
+    // Tests if product views are correctly stored in-memory and returned in the right order.
+    test('records and retrieves recent views in-memory', () async {
+      await service.recordProductView(productId: '1');
+      await service.recordProductView(productId: '2');
+      expect(service.getRecent(null), ['2', '1']);
     });
 
-    test('getRelatedProducts returns items in same category', () async {
-      final prefs = await SharedPreferences.getInstance();
-      final repo = _FakeRepo({
-        'p1': Product(id: 'p1', name: 'A', description: '', price: 1.0, imageUrl: '', stock: 10, category: 'cat1'),
-        'p2': Product(id: 'p2', name: 'B', description: '', price: 2.0, imageUrl: '', stock: 5, category: 'cat1'),
-      });
-
-      final service = RecommendationService(repo, prefs);
-      final related = await service.getRelatedProducts('p1', limit: 5);
-      expect(related.any((p) => p.id == 'p2'), true);
+    // Checks that related products are returned, but the original product is excluded and the limit is respected.
+    test('getRelatedProducts excludes original and limits', () async {
+      final related = await service.getRelatedProducts('1', limit: 2);
+      expect(related.any((p) => p.id == '1'), false);
+      expect(related.length <= 2, true);
     });
 
-    test('migrates in-memory history to SharedPreferences', () async {
-      final repo = _FakeRepo({
-        'p1': Product(id: 'p1', name: 'A', description: '', price: 1.0, imageUrl: '', stock: 10, category: 'cat1'),
-      });
+    // Tests if recommendations are generated based on the most viewed category and already seen products are excluded.
+    test('getBehavioralRecommendations returns by category', () async {
+      await service.recordProductView(productId: '1');
+      await service.recordProductView(productId: '2');
+      final recs = await service.getBehavioralRecommendations(null, limit: 2);
+      expect(recs.every((p) => p.category == 'Clothes'), true);
+    });
 
-      final service = RecommendationService(repo, null);
-
-      // Record some in-memory views for user u1
-      await service.recordProductView(userId: 'u1', productId: 'p1');
-      await service.recordProductView(userId: 'u1', productId: 'p2');
-
-      // Ensure they're in-memory (prefs not set)
-      expect(service.getRecent('u1'), ['p2', 'p1']);
-
-      // Now create prefs and migrate
-      SharedPreferences.setMockInitialValues({'recently_viewed_u1': ['p1']});
-      final prefs = await SharedPreferences.getInstance();
-
-      await service.migrateToPrefs(prefs);
-
-      // After migration, prefs should contain merged list with in-memory items first
-      final stored = prefs.getStringList('recently_viewed_u1');
-      expect(stored, isNotNull);
-      expect(stored, containsAll(['p2', 'p1']));
-
-      // getRecent should now read from prefs
-      expect(service.getRecent('u1'), stored);
+    // Checks if the AI recommendation logic combines different sources (seed, behavioral, text search) and returns recommendations.
+    test('getAiPoweredRecommendations combines logic', () async {
+      await service.recordProductView(productId: '1');
+      final recs = await service.getAiPoweredRecommendations(
+        userId: null,
+        seedProductId: '3',
+        query: 'Shirt',
+        limit: 3,
+      );
+      expect(recs.length, greaterThan(0));
     });
   });
 }

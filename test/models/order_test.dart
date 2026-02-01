@@ -1,6 +1,7 @@
 // test/models/order_test.dart
 import 'package:flutter_test/flutter_test.dart';
-import 'package:webshop/models/order.dart';
+import 'package:webshop/models/order.dart' as model;
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:webshop/models/product.dart';
 import 'package:webshop/models/cart_item.dart';
 
@@ -37,7 +38,7 @@ void main() {
 
     test('Order should be created with valid data', () {
       final now = DateTime.now();
-      final order = Order(
+      final order = model.Order(
         id: 'order-1',
         orderId: 'ORD-12345',
         items: testCartItems,
@@ -62,126 +63,127 @@ void main() {
           reason: 'New order should have pending status');
     });
 
-    test('Order should handle gift card discounts', () {
+    // More meaningful tests that verify parsing and defaults from Firestore data
+    test('fromMap reconstructs items and fields correctly', () {
+      final ts = DateTime.utc(2024, 1, 2, 3, 4, 5);
+      final data = {
+        'orderId': 'ORD-123',
+        'items': [
+          {
+            'productId': 'p1',
+            'productName': 'Blue Shirt',
+            'productPrice': 19.99,
+            'quantity': 2,
+            'imageUrl': 'https://example.com/blue.jpg',
+            'category': 'Clothing',
+          }
+        ],
+        'totalPrice': 39.98,
+        'finalAmountPaid': 39.98,
+        'giftCardAppliedAmount': 0.0,
+        'appliedGiftCardCode': 'NONE',
+        'shippingAddress': {'line1': 'Street 1'},
+        'status': 'processing',
+        'timestamp': Timestamp.fromDate(ts),
+      };
+
+      final order = model.Order.fromMap(data, 'doc-1');
+
+      expect(order.id, 'doc-1');
+      expect(order.orderId, 'ORD-123');
+      expect(order.totalPrice, 39.98);
+      expect(order.finalAmountPaid, 39.98);
+      expect(order.giftCardAppliedAmount, 0.0);
+      expect(order.appliedGiftCardCode, 'NONE');
+      expect(order.shippingAddress, isA<Map<String, dynamic>>());
+      expect(order.status, 'processing');
+      expect(order.timestamp.millisecondsSinceEpoch, ts.millisecondsSinceEpoch);
+
+      expect(order.items.length, 1);
+      final item = order.items.first;
+      expect(item.id, 'p1');
+      expect(item.product.id, 'p1');
+      expect(item.product.name, 'Blue Shirt');
+      expect(item.product.price, 19.99);
+      expect(item.quantity, 2);
+
+      // Historical product snapshot should have stock 0
+      expect(item.product.stock, 0);
+      expect(item.product.category, 'Clothing');
+    });
+
+    test('fromMap handles missing optional fields and types safely', () {
+      final data = <String, dynamic>{};
+      final order = model.Order.fromMap(data, 'doc-empty');
+
+      expect(order.id, 'doc-empty');
+      expect(order.orderId, 'doc-empty');
+      expect(order.items, isEmpty);
+      expect(order.totalPrice, 0.0);
+      expect(order.finalAmountPaid, 0.0);
+      expect(order.giftCardAppliedAmount, 0.0);
+      expect(order.appliedGiftCardCode, isNull);
+      expect(order.shippingAddress, isNull);
+      expect(order.status, 'pending');
+      expect(order.timestamp, isA<DateTime>());
+    });
+
+    test('item fields default correctly when parts are missing', () {
+      final data = {
+        'items': [
+          {
+            'productId': 'p2',
+            // name missing -> should default to 'Unknown'
+            'productPrice': 5,
+            // quantity missing -> default to 0
+          }
+        ]
+      };
+
+      final order = model.Order.fromMap(data, 'doc-2');
+      expect(order.items.length, 1);
+      final p = order.items.first.product;
+      expect(p.id, 'p2');
+      expect(p.name, 'Unknown');
+      expect(p.price, 5.0);
+      expect(order.items.first.quantity, 0);
+      // category default
+      expect(p.category, 'General');
+    });
+  });
+
+  group('Order Edge Cases & toString', () {
+    test('Order.fromMap mit fehlenden Feldern', () {
       final now = DateTime.now();
-      final order = Order(
+      final map = {
+        // absichtlich Felder weggelassen
+        'orderId': 'ORD-999',
+        'items': [],
+        'totalPrice': 0.0,
+        'finalAmountPaid': 0.0,
+        'giftCardAppliedAmount': 0.0,
+        'status': 'pending',
+        'timestamp': Timestamp.fromDate(now),
+      };
+      // Sollte nicht crashen, sondern sinnvolle Defaults setzen oder Fehler werfen
+      expect(() => model.Order.fromMap(map, 'order-999'), returnsNormally);
+    });
+
+    test('Order.toString gibt sinnvolle Infos', () {
+      final order = model.Order(
         id: 'order-2',
-        orderId: 'ORD-67890',
-        items: testCartItems,
-        totalPrice: 70.00,
-        finalAmountPaid: 50.00,
-        giftCardAppliedAmount: 20.00,
-        appliedGiftCardCode: 'SAVE20',
-        status: 'pending',
-        timestamp: now,
-      );
-
-      expect(order.totalPrice, 70.00,
-          reason: 'Total price should be 70.00 before discount');
-      expect(order.giftCardAppliedAmount, 20.00,
-          reason: 'Gift card discount should be 20.00');
-      expect(order.finalAmountPaid, 50.00,
-          reason: 'Final amount should be 70.00 - 20.00 = 50.00');
-      expect(order.appliedGiftCardCode, 'SAVE20',
-          reason: 'Gift card code should be stored in order');
-      expect(
-          order.totalPrice - order.giftCardAppliedAmount, order.finalAmountPaid,
-          reason:
-              'Mathematical relationship: totalPrice - discount = finalAmount should hold');
-    });
-
-    test('Order should calculate total from items correctly', () {
-      final now = DateTime.now();
-      final order = Order(
-        id: 'order-3',
-        orderId: 'ORD-11111',
-        items: testCartItems,
-        totalPrice: 70.00,
-        finalAmountPaid: 70.00,
-        giftCardAppliedAmount: 0.00,
-        status: 'pending',
-        timestamp: now,
-      );
-
-      // Product 1: 20.00 * 2 = 40.00
-      // Product 2: 30.00 * 1 = 30.00
-      // Total: 70.00
-      double calculatedTotal = 0;
-      for (var item in order.items) {
-        calculatedTotal += item.product.price * item.quantity;
-      }
-
-      expect(calculatedTotal, order.totalPrice,
-          reason:
-              'Sum of (item.price × quantity) for all items should equal order total price');
-    });
-
-    test('Order should handle different statuses', () {
-      final now = DateTime.now();
-      final statuses = [
-        'pending',
-        'processing',
-        'shipped',
-        'delivered',
-        'cancelled'
-      ];
-
-      for (var status in statuses) {
-        final order = Order(
-          id: 'order-$status',
-          orderId: 'ORD-$status',
-          items: testCartItems,
-          totalPrice: 70.00,
-          finalAmountPaid: 70.00,
-          giftCardAppliedAmount: 0.00,
-          status: status,
-          timestamp: now,
-        );
-
-        expect(order.status, status,
-            reason: 'Order should correctly store status: $status');
-      }
-    });
-
-    test('Order should handle empty items list', () {
-      final now = DateTime.now();
-      final order = Order(
-        id: 'order-empty',
-        orderId: 'ORD-EMPTY',
+        orderId: 'ORD-2',
         items: [],
-        totalPrice: 0.00,
-        finalAmountPaid: 0.00,
-        giftCardAppliedAmount: 0.00,
+        totalPrice: 0.0,
+        finalAmountPaid: 0.0,
+        giftCardAppliedAmount: 0.0,
         status: 'pending',
-        timestamp: now,
+        timestamp: DateTime.now(),
       );
-
-      expect(order.items.isEmpty, true,
-          reason: 'Order with no items should have empty items list');
-      expect(order.totalPrice, 0.00,
-          reason: 'Order with no items should have total price of 0.00');
-      expect(order.finalAmountPaid, 0.00,
-          reason: 'Order with no items should have final amount of 0.00');
-    });
-
-    test('Order should handle nullable fields', () {
-      final now = DateTime.now();
-      final order = Order(
-        id: 'order-minimal',
-        orderId: 'ORD-MIN',
-        items: testCartItems,
-        totalPrice: 70.00,
-        finalAmountPaid: 70.00,
-        giftCardAppliedAmount: 0.00,
-        status: 'pending',
-        timestamp: now,
-        // No gift card code or shipping address
-      );
-
-      expect(order.appliedGiftCardCode, isNull,
-          reason: 'Order without gift card should have null gift card code');
-      expect(order.shippingAddress, isNull,
-          reason: 'Order without shipping address should have null address');
+      final str = order.toString();
+      expect(str, contains('ORD-2'));
+      expect(str, contains('pending'));
     });
   });
 }
+
